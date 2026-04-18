@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,16 @@ class RuntimeBootstrapTest(unittest.TestCase):
             missing = runtime_bootstrap.find_missing_requirements(requirements)
 
         self.assertEqual([item.distribution_name for item in missing], ["missing_pkg"])
+
+    def test_ask_user_to_install_accepts_console_confirmation(self):
+        requirements = [
+            runtime_bootstrap.RequirementSpec("missing_pkg>=1", "missing_pkg", self.temp_dir / "r.txt", 1),
+        ]
+
+        with patch.object(runtime_bootstrap, "has_interactive_console", return_value=True), patch.object(builtins, "input", return_value="tak"):
+            accepted = runtime_bootstrap.ask_user_to_install(requirements, self.temp_dir / "requirements.txt")
+
+        self.assertTrue(accepted)
 
     def test_ensure_runtime_dependencies_skips_empty_requirements_file(self):
         requirements = self.temp_dir / "requirements.txt"

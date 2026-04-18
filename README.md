@@ -41,7 +41,8 @@ Je?eli wybierzesz tryb `Minimum z wybranych`, aplikacja uruchomi kompresj? dla z
 
 Najwa?niejsze pliki:
 
-- `Code/__main__.py` - g??wny punkt startowy aplikacji uruchamiany przez `python -m Code`.
+- `launcher.py` - g??wny plik launchera uruchamiany bezpo?rednio przez u?ytkownika.
+- `Code/__main__.py` - alternatywny start modu?owy, korzystaj?cy z tego samego bootstrapu.
 - `Code/runtime_bootstrap.py` - sprawdzanie `requirements.txt` i instalacja brakuj?cych pakiet?w po zgodzie u?ytkownika.
 - `Code/pylossless/main.py` - uruchomienie programu i instalacja globalnych hook?w wyj?tk?w.
 - `Code/pylossless/gui.py` - interfejs u?ytkownika Tkinter.
@@ -56,14 +57,16 @@ Najwa?niejsze pliki:
 Aktualna wersja projektu dzia?a wy??cznie na bibliotece standardowej Pythona, wi?c `requirements.txt` jest obecnie pusty z premedytacj?.
 Plik zosta? jednak dodany ju? teraz, ?eby projekt by? przygotowany na przysz?e rozszerzenia wymagaj?ce pakiet?w zewn?trznych.
 
-Przy starcie aplikacja:
+Launcher przy starcie dzia?a bez GUI i przez konsol?:
 
 - sprawdza zawarto?? `requirements.txt`,
 - wykrywa brakuj?ce pakiety,
+- wypisuje ich list? w konsoli,
 - pyta u?ytkownika o zgod? na instalacj?,
-- dopiero po potwierdzeniu uruchamia `pip install -r requirements.txt`.
+- dopiero po potwierdzeniu uruchamia `pip install -r requirements.txt`,
+- po poprawnym sprawdzeniu lub instalacji uruchamia w?a?ciwe GUI aplikacji.
 
-Je?li u?ytkownik odm?wi, aplikacja nie ruszy dalej i poka?e jasny komunikat z poleceniem do r?cznej instalacji.
+Je?li u?ytkownik odm?wi, launcher zatrzyma start i poka?e w konsoli polecenie do r?cznej instalacji.
 Je?eli instalacja przez `pip` si? nie powiedzie, szczeg??y trafiaj? do pliku `.txt` w katalogu log?w aplikacji.
 
 R?czna instalacja zale?no?ci:
@@ -74,10 +77,13 @@ python -m pip install -r requirements.txt
 
 ## Jak uruchomi?
 
-W katalogu projektu uruchom:
+Uruchamiaj projekt przez plik `launcher.py`.
+To on najpierw sprawdza zale?no?ci w konsoli, a dopiero potem startuje GUI.
+
+Je?li chcesz uruchamia? go z terminala, mo?esz u?y?:
 
 ```bash
-python -m Code
+python launcher.py
 ```
 
 Po starcie zobaczysz okno z trzema zak?adkami:
@@ -212,5 +218,5 @@ Aktualne testy sprawdzaj? mi?dzy innymi:
 
 W projekcie zosta?y usuni?te zb?dne pliki pomocnicze, kt?re dublowa?y aktualn? logik? lub nie by?y ju? u?ywane:
 
-- `Code/code.py` - zast?piony przez uruchamianie modu?owe `python -m Code`,
+- `Code/code.py` - zast?piony przez jeden launcher `launcher.py`,
 - `Code/pylossless/settings.py` - nieu?ywany po przeniesieniu obs?ugi ustawie? do GUI.

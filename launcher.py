@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from .runtime_bootstrap import bootstrap_and_run
+from Code.runtime_bootstrap import bootstrap_and_run
 
 
-def run() -> None:
+def main() -> None:
     def start_gui() -> None:
-        from .pylossless.main import main as gui_main
+        from Code.pylossless.main import main as gui_main
 
         gui_main()
 
@@ -13,4 +13,4 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-    run()
+    main()
