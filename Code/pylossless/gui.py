@@ -4,7 +4,9 @@ import json
 import os
 import queue
 import sys
+import threading
 import time
+import traceback
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -14,9 +16,10 @@ from tkinter import filedialog, messagebox, ttk
 from .constants import APP_NAME, APP_VERSION, CONTAINER_EXT, DEFAULT_CHUNK, QUEUE_POLL_MS
 from .container import read_container_header
 from .jobs import compress_job, decompress_job, estimate_output, verify_archive_job
+from .error_logging import write_error_report, write_exception_report
 from .models import SourceSpec
-from .paths import SETTINGS_FILE
-from .utils import ensure_dir, format_seconds, human_size
+from .paths import LOGS_DIR, SETTINGS_FILE
+from .utils import ensure_dir, format_seconds, human_size, read_text_file
 from .worker import Worker
 
 
@@ -34,9 +37,25 @@ class App(tk.Tk):
         self.last_output_file: Optional[Path] = None
 
         self._build_variables()
+        ensure_dir(LOGS_DIR)
         self._build_ui()
         self._load_settings()
+        self.log(f"Folder log?w b??d?w: {LOGS_DIR}")
         self.after(QUEUE_POLL_MS, self._poll_queue)
+
+    def report_callback_exception(self, exc, val, tb):
+        log_path = write_exception_report(
+            exc,
+            val,
+            tb,
+            context="Nieobs?u?ony wyj?tek w callbacku interfejsu Tkinter.",
+        )
+        self.status_var.set("B??d krytyczny interfejsu.")
+        self.log(f"B??d krytyczny interfejsu. Raport zapisano do: {log_path}")
+        messagebox.showerror(
+            "B??d krytyczny",
+            f"Wyst?pi? nieobs?u?ony b??d interfejsu.\n\nRaport zapisano do:\n{log_path}",
+        )
 
     def _build_variables(self):
         self.file_path_var = tk.StringVar()
@@ -297,21 +316,27 @@ class App(tk.Tk):
         if not path:
             return
         try:
-            text = Path(path).read_text(encoding="utf-8")
-        except UnicodeDecodeError:
-            try:
-                text = Path(path).read_text(encoding="cp1250")
-            except Exception as e:
-                messagebox.showerror("Błąd", f"Nie udało się wczytać tekstu z pliku:\n{e}")
-                return
-        except Exception as e:
-            messagebox.showerror("Błąd", f"Nie udało się wczytać pliku:\n{e}")
+            text, encoding = read_text_file(Path(path))
+        except Exception as exc:
+            log_path = write_error_report(
+                title="B??d wczytywania pliku tekstowego",
+                message=str(exc),
+                traceback_text=traceback.format_exc(),
+                context=f"Nie uda?o si? wczyta? pliku tekstowego: {path}",
+            )
+            self.log(f"Nie uda?o si? wczyta? tekstu z pliku: {path}")
+            self.log(f"Raport b??du zapisano do: {log_path}")
+            messagebox.showerror(
+                "B??d",
+                f"Nie uda?o si? wczyta? tekstu z pliku:\n{exc}\n\nRaport zapisano do:\n{log_path}",
+            )
             return
 
         self.text_box.delete("1.0", "end")
         self.text_box.insert("1.0", text)
         self.text_name_var.set(Path(path).name)
         self.on_text_modified()
+        self.log(f"Wczytano plik tekstowy ({encoding}): {path}")
 
     def update_file_info(self):
         path_str = self.file_path_var.get().strip()
@@ -333,13 +358,13 @@ class App(tk.Tk):
     def on_text_modified(self, event=None):
         try:
             self.text_box.edit_modified(False)
-        except Exception:
+        except tk.TclError:
             pass
         text = self.text_box.get("1.0", "end-1c")
         char_count = len(text)
         byte_count = len(text.encode("utf-8"))
-        self.text_info_var.set(f"Tekst: {char_count} znaków / {human_size(byte_count)}")
-        self.input_size_var.set(f"Wejście: {human_size(byte_count)}")
+        self.text_info_var.set(f"Tekst: {char_count} znak?w / {human_size(byte_count)}")
+        self.input_size_var.set(f"Wej?cie: {human_size(byte_count)}")
 
     def load_archive_header(self):
         path_str = self.decode_path_var.get().strip()
@@ -645,9 +670,21 @@ class App(tk.Tk):
 
     def handle_error(self, item: dict):
         self.current_worker = None
-        self.status_var.set(f"Błąd: {item['message']}")
-        self.log(item["traceback"])
-        messagebox.showerror("Błąd", item["message"])
+        self.status_var.set(f"B??d: {item['message']}")
+        if item.get("traceback"):
+            self.log(item["traceback"])
+        log_path = write_error_report(
+            title=f"B??d zadania: {item.get('task', 'nieznane')}",
+            message=item["message"],
+            traceback_text=item.get("traceback", ""),
+            context="Wyj?tek przechwycony w w?tku roboczym i przekazany do GUI.",
+            extra_lines=[f"Czas zadania: {item.get('elapsed', 0.0):.3f} s"],
+        )
+        self.log(f"Raport b??du zapisano do: {log_path}")
+        messagebox.showerror(
+            "B??d",
+            f"{item['message']}\n\nRaport zapisano do:\n{log_path}",
+        )
 
     def handle_cancelled(self, item: dict):
         self.current_worker = None
@@ -688,8 +725,15 @@ class App(tk.Tk):
             self.auto_gzip_var.set(bool(data.get("auto_gzip", self.auto_gzip_var.get())))
             self.auto_bz2_var.set(bool(data.get("auto_bz2", self.auto_bz2_var.get())))
             self.auto_lzma_var.set(bool(data.get("auto_lzma", self.auto_lzma_var.get())))
-        except Exception as e:
-            self.log(f"Nie udało się wczytać ustawień: {e}")
+        except Exception as exc:
+            log_path = write_error_report(
+                title="B??d wczytywania ustawie?",
+                message=str(exc),
+                traceback_text=traceback.format_exc(),
+                context="Wyj?tek podczas odczytu pliku ustawie? aplikacji.",
+            )
+            self.log(f"Nie uda?o si? wczyta? ustawie?: {exc}")
+            self.log(f"Raport b??du zapisano do: {log_path}")
 
         self.update_file_info()
         self.on_text_modified()
@@ -715,8 +759,15 @@ class App(tk.Tk):
         try:
             ensure_dir(SETTINGS_FILE.parent)
             SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as exc:
+            log_path = write_error_report(
+                title="B??d zapisu ustawie?",
+                message=str(exc),
+                traceback_text=traceback.format_exc(),
+                context="Wyj?tek podczas zapisu pliku ustawie? aplikacji.",
+            )
+            self.log(f"Nie uda?o si? zapisa? ustawie?: {exc}")
+            self.log(f"Raport b??du zapisano do: {log_path}")
 
     def destroy(self):
         self._save_settings()

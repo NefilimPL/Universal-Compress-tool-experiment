@@ -1,0 +1,7 @@
+# Runtime dependencies for PyLossless Studio.
+#
+# The current version of the project uses only Python standard library modules,
+# so this file intentionally has no external packages yet.
+#
+# Add future pip packages here, one per line, for example:
+# requests>=2.32

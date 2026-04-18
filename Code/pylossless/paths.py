@@ -28,3 +28,4 @@ APP_DATA_DIR = get_user_data_dir()
 DEFAULT_ENCODE_DIR = APP_DATA_DIR / "wynik_zakodowany"
 DEFAULT_DECODE_DIR = APP_DATA_DIR / "wynik_odkodowany"
 SETTINGS_FILE = APP_DATA_DIR / "pylossless_settings.json"
+LOGS_DIR = APP_DATA_DIR / "logs"
