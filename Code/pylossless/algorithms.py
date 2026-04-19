@@ -38,22 +38,22 @@ def clamp_level(algo: str, level: int) -> int:
 def ensure_algorithm_available(algo: str) -> None:
     meta = ALGO_META.get(algo)
     if meta is None:
-        raise ValueError(f"Nieobs?ugiwany algorytm: {algo}")
+        raise ValueError(f"Nieobsługiwany algorytm: {algo}")
     if not meta["available"]:
-        raise RuntimeError(f"Modu? dla algorytmu {meta['label']} nie jest dost?pny w tym Pythonie.")
+        raise RuntimeError(f"Moduł dla algorytmu {meta['label']} nie jest dostępny w tym Pythonie.")
 
 
 class ZlibWriteAdapter:
     def __init__(self, raw_f, level: int):
         if zlib is None:
-            raise RuntimeError("Modu? zlib nie jest dost?pny w tym Pythonie.")
+            raise RuntimeError("Moduł zlib nie jest dostępny w tym Pythonie.")
         self.raw_f = raw_f
         self._comp = zlib.compressobj(level)
         self._closed = False
 
     def write(self, data: bytes) -> int:
         if self._closed:
-            raise ValueError("Strumie? zlib jest zamkni?ty.")
+            raise ValueError("Strumień zlib jest zamknięty.")
         if data:
             out = self._comp.compress(data)
             if out:
@@ -90,4 +90,4 @@ def open_compressed_writer(algo: str, raw_f, level: int):
     if algo == "zlib":
         return ZlibWriteAdapter(raw_f, level=level)
 
-    raise ValueError(f"Nieobs?ugiwany algorytm: {algo}")
+    raise ValueError(f"Nieobsługiwany algorytm: {algo}")

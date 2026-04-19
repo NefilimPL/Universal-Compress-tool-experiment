@@ -13,12 +13,14 @@ from typing import Callable, Optional
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from .algorithms import AVAILABLE_ALGOS
 from .constants import APP_NAME, APP_VERSION, CONTAINER_EXT, DEFAULT_CHUNK, QUEUE_POLL_MS
 from .container import read_container_header
 from .jobs import compress_job, decompress_job, estimate_output, verify_archive_job
 from .error_logging import write_error_report, write_exception_report
 from .models import SourceSpec
 from .paths import LOGS_DIR, SETTINGS_FILE
+from .tooltip import ToolTip
 from .utils import ensure_dir, format_seconds, human_size, read_text_file
 from .worker import Worker
 
@@ -35,12 +37,13 @@ class App(tk.Tk):
         self.current_worker: Optional[Worker] = None
         self.progress_start_time = 0.0
         self.last_output_file: Optional[Path] = None
+        self._tooltips: list[ToolTip] = []
 
         self._build_variables()
         ensure_dir(LOGS_DIR)
         self._build_ui()
         self._load_settings()
-        self.log(f"Folder log?w b??d?w: {LOGS_DIR}")
+        self.log(f"Folder logów błędów: {LOGS_DIR}")
         self.after(QUEUE_POLL_MS, self._poll_queue)
 
     def report_callback_exception(self, exc, val, tb):
@@ -48,14 +51,17 @@ class App(tk.Tk):
             exc,
             val,
             tb,
-            context="Nieobs?u?ony wyj?tek w callbacku interfejsu Tkinter.",
+            context="Nieobsłużony wyjątek w callbacku interfejsu Tkinter.",
         )
-        self.status_var.set("B??d krytyczny interfejsu.")
-        self.log(f"B??d krytyczny interfejsu. Raport zapisano do: {log_path}")
+        self.status_var.set("Błąd krytyczny interfejsu.")
+        self.log(f"Błąd krytyczny interfejsu. Raport zapisano do: {log_path}")
         messagebox.showerror(
-            "B??d krytyczny",
-            f"Wyst?pi? nieobs?u?ony b??d interfejsu.\n\nRaport zapisano do:\n{log_path}",
+            "Błąd krytyczny",
+            f"Wystąpił nieobsłużony błąd interfejsu.\n\nRaport zapisano do:\n{log_path}",
         )
+
+    def _attach_tooltip(self, widget, text: str):
+        self._tooltips.append(ToolTip(widget, text))
 
     def _build_variables(self):
         self.file_path_var = tk.StringVar()
@@ -129,21 +135,35 @@ class App(tk.Tk):
         tab.columnconfigure(1, weight=1)
         self.notebook.add(tab, text="Kodowanie pliku")
 
-        ttk.Label(tab, text="Plik wejściowy:").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(tab, textvariable=self.file_path_var).grid(row=0, column=1, sticky="ew", padx=6, pady=4)
-        ttk.Button(tab, text="Wybierz…", command=self.choose_file).grid(row=0, column=2, pady=4)
+        input_label = ttk.Label(tab, text="Plik wejściowy:")
+        input_label.grid(row=0, column=0, sticky="w", pady=4)
+        input_entry = ttk.Entry(tab, textvariable=self.file_path_var)
+        input_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        input_button = ttk.Button(tab, text="Wybierz...", command=self.choose_file)
+        input_button.grid(row=0, column=2, pady=4)
 
-        ttk.Label(tab, textvariable=self.file_info_var).grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 4))
-        ttk.Label(
+        info_label = ttk.Label(tab, textvariable=self.file_info_var)
+        info_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(6, 4))
+        hint_label = ttk.Label(
             tab,
             text="Domyślnie wynik zapisze się obok pliku wejściowego, chyba że wskażesz katalog wyjściowy po prawej.",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 10))
+        )
+        hint_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 10))
 
         buttons = ttk.Frame(tab)
         buttons.grid(row=3, column=0, columnspan=3, sticky="w")
-        ttk.Button(buttons, text="Oszacuj rozmiar", command=self.start_estimate_from_file).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Koduj plik", command=self.start_encode_file).pack(side="left")
+        estimate_button = ttk.Button(buttons, text="Oszacuj rozmiar", command=self.start_estimate_from_file)
+        estimate_button.pack(side="left", padx=(0, 8))
+        encode_button = ttk.Button(buttons, text="Koduj plik", command=self.start_encode_file)
+        encode_button.pack(side="left")
 
+        self._attach_tooltip(input_label, "Wskaż plik, który ma zostać zapisany do archiwum .pylc.")
+        self._attach_tooltip(input_entry, "Możesz wkleić ścieżkę ręcznie albo wybrać plik przyciskiem obok.")
+        self._attach_tooltip(input_button, "Otwórz okno wyboru pliku wejściowego.")
+        self._attach_tooltip(info_label, "Tutaj program pokazuje nazwę pliku, jego rozmiar i pełną ścieżkę.")
+        self._attach_tooltip(hint_label, "Krótka informacja o domyślnej lokalizacji pliku wynikowego.")
+        self._attach_tooltip(estimate_button, "Policz przewidywany rozmiar archiwum bez pełnego kodowania.")
+        self._attach_tooltip(encode_button, "Uruchom kompresję wybranego pliku z bieżącymi ustawieniami.")
     def _build_tab_text(self):
         tab = ttk.Frame(self.notebook, padding=10)
         tab.columnconfigure(0, weight=1)
@@ -154,11 +174,15 @@ class App(tk.Tk):
         row1.grid(row=0, column=0, sticky="ew")
         row1.columnconfigure(1, weight=1)
 
-        ttk.Label(row1, text="Nazwa tekstu / przyszłego pliku:").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(row1, textvariable=self.text_name_var).grid(row=0, column=1, sticky="ew", padx=6, pady=4)
-        ttk.Button(row1, text="Wczytaj TXT…", command=self.load_text_from_file).grid(row=0, column=2, pady=4)
+        name_label = ttk.Label(row1, text="Nazwa tekstu / przyszłego pliku:")
+        name_label.grid(row=0, column=0, sticky="w", pady=4)
+        name_entry = ttk.Entry(row1, textvariable=self.text_name_var)
+        name_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        load_button = ttk.Button(row1, text="Wczytaj TXT...", command=self.load_text_from_file)
+        load_button.grid(row=0, column=2, pady=4)
 
-        ttk.Label(tab, textvariable=self.text_info_var).grid(row=1, column=0, sticky="w", pady=(4, 4))
+        info_label = ttk.Label(tab, textvariable=self.text_info_var)
+        info_label.grid(row=1, column=0, sticky="w", pady=(4, 4))
 
         self.text_box = tk.Text(tab, wrap="word", undo=True, font=("Consolas", 11))
         self.text_box.grid(row=2, column=0, sticky="nsew", pady=6)
@@ -166,79 +190,156 @@ class App(tk.Tk):
 
         buttons = ttk.Frame(tab)
         buttons.grid(row=3, column=0, sticky="w", pady=(6, 0))
-        ttk.Button(buttons, text="Wyczyść", command=lambda: self.text_box.delete("1.0", "end")).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Oszacuj rozmiar", command=self.start_estimate_from_text).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Koduj tekst", command=self.start_encode_text).pack(side="left")
+        clear_button = ttk.Button(buttons, text="Wyczyść", command=lambda: self.text_box.delete("1.0", "end"))
+        clear_button.pack(side="left", padx=(0, 8))
+        estimate_button = ttk.Button(buttons, text="Oszacuj rozmiar", command=self.start_estimate_from_text)
+        estimate_button.pack(side="left", padx=(0, 8))
+        encode_button = ttk.Button(buttons, text="Koduj tekst", command=self.start_encode_text)
+        encode_button.pack(side="left")
 
+        self._attach_tooltip(name_label, "Nazwa zapisywana w metadanych archiwum i używana po odzyskaniu tekstu jako nazwa pliku.")
+        self._attach_tooltip(name_entry, "Wpisz nazwę, pod jaką tekst ma być identyfikowany po dekodowaniu.")
+        self._attach_tooltip(load_button, "Wczytaj zawartość pliku TXT do pola tekstowego.")
+        self._attach_tooltip(info_label, "Liczba znaków i rozmiar tekstu po zakodowaniu w UTF-8.")
+        self._attach_tooltip(self.text_box, "Tutaj wpisujesz albo wklejasz tekst, który ma zostać skompresowany.")
+        self._attach_tooltip(clear_button, "Usuń całą zawartość pola tekstowego.")
+        self._attach_tooltip(estimate_button, "Policz przewidywany rozmiar archiwum dla bieżącego tekstu.")
+        self._attach_tooltip(encode_button, "Zapisz tekst do archiwum .pylc z użyciem aktualnych ustawień.")
     def _build_tab_decode(self):
         tab = ttk.Frame(self.notebook, padding=10)
         tab.columnconfigure(1, weight=1)
         self.notebook.add(tab, text="Dekodowanie")
 
-        ttk.Label(tab, text="Archiwum *.pylc:").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(tab, textvariable=self.decode_path_var).grid(row=0, column=1, sticky="ew", padx=6, pady=4)
-        ttk.Button(tab, text="Wybierz…", command=self.choose_archive).grid(row=0, column=2, pady=4)
+        archive_label = ttk.Label(tab, text="Archiwum *.pylc:")
+        archive_label.grid(row=0, column=0, sticky="w", pady=4)
+        archive_entry = ttk.Entry(tab, textvariable=self.decode_path_var)
+        archive_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        archive_button = ttk.Button(tab, text="Wybierz...", command=self.choose_archive)
+        archive_button.grid(row=0, column=2, pady=4)
 
-        ttk.Label(tab, textvariable=self.header_info_var, justify="left").grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 6))
-        ttk.Label(
+        header_label = ttk.Label(tab, textvariable=self.header_info_var, justify="left")
+        header_label.grid(row=1, column=0, columnspan=3, sticky="w", pady=(8, 6))
+        hint_label = ttk.Label(
             tab,
             text="Jeśli zaznaczysz ‘Przywracaj do oryginalnej lokalizacji’, program spróbuje użyć ścieżki zapisanej w archiwum; w przeciwnym razie użyje katalogu wyjściowego lub folderu domyślnego.",
             wraplength=760,
             justify="left",
-        ).grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 10))
+        )
+        hint_label.grid(row=2, column=0, columnspan=3, sticky="w", pady=(4, 10))
 
         buttons = ttk.Frame(tab)
         buttons.grid(row=3, column=0, columnspan=3, sticky="w")
-        ttk.Button(buttons, text="Czytaj nagłówek", command=self.load_archive_header).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Test integralności", command=self.start_verify_archive).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Dekoduj", command=self.start_decode).pack(side="left")
+        header_button = ttk.Button(buttons, text="Czytaj nagłówek", command=self.load_archive_header)
+        header_button.pack(side="left", padx=(0, 8))
+        verify_button = ttk.Button(buttons, text="Test integralności", command=self.start_verify_archive)
+        verify_button.pack(side="left", padx=(0, 8))
+        decode_button = ttk.Button(buttons, text="Dekoduj", command=self.start_decode)
+        decode_button.pack(side="left")
 
+        self._attach_tooltip(archive_label, "Wskaż archiwum PyLossless, które ma zostać odczytane.")
+        self._attach_tooltip(archive_entry, "Możesz wkleić ścieżkę archiwum ręcznie albo wybrać plik przyciskiem obok.")
+        self._attach_tooltip(archive_button, "Otwórz okno wyboru archiwum .pylc.")
+        self._attach_tooltip(header_label, "Tutaj pojawiają się metadane zapisane w nagłówku archiwum.")
+        self._attach_tooltip(hint_label, "Wyjaśnienie, skąd program bierze docelową lokalizację po dekodowaniu.")
+        self._attach_tooltip(header_button, "Wczytaj sam nagłówek archiwum bez pełnego dekodowania danych.")
+        self._attach_tooltip(verify_button, "Sprawdź integralność archiwum bez zapisywania odzyskanego pliku.")
+        self._attach_tooltip(decode_button, "Odzyskaj plik lub tekst z wybranego archiwum.")
     def _build_settings(self, parent):
         frm = ttk.LabelFrame(parent, text="Ustawienia", padding=10)
         frm.grid(row=0, column=0, sticky="ew")
         frm.columnconfigure(1, weight=1)
 
-        ttk.Label(frm, text="Katalog wyjściowy:").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(frm, textvariable=self.output_dir_var).grid(row=0, column=1, sticky="ew", padx=6, pady=4)
-        ttk.Button(frm, text="Wybierz…", command=self.choose_output_dir).grid(row=0, column=2, pady=4)
+        output_label = ttk.Label(frm, text="Katalog wyjściowy:")
+        output_label.grid(row=0, column=0, sticky="w", pady=4)
+        output_entry = ttk.Entry(frm, textvariable=self.output_dir_var)
+        output_entry.grid(row=0, column=1, sticky="ew", padx=6, pady=4)
+        output_button = ttk.Button(frm, text="Wybierz...", command=self.choose_output_dir)
+        output_button.grid(row=0, column=2, pady=4)
 
         ttk.Separator(frm, orient="horizontal").grid(row=1, column=0, columnspan=3, sticky="ew", pady=8)
 
-        ttk.Label(frm, text="Tryb kompresji:").grid(row=2, column=0, sticky="w", pady=4)
+        mode_label = ttk.Label(frm, text="Tryb kompresji:")
+        mode_label.grid(row=2, column=0, sticky="w", pady=4)
         row = ttk.Frame(frm)
         row.grid(row=2, column=1, columnspan=2, sticky="w")
-        ttk.Radiobutton(row, text="Jeden algorytm", variable=self.algo_mode_var, value="single").pack(side="left", padx=(0, 8))
-        ttk.Radiobutton(row, text="Minimum z wybranych", variable=self.algo_mode_var, value="auto").pack(side="left")
+        mode_single = ttk.Radiobutton(row, text="Jeden algorytm", variable=self.algo_mode_var, value="single")
+        mode_single.pack(side="left", padx=(0, 8))
+        mode_auto = ttk.Radiobutton(row, text="Minimum z wybranych", variable=self.algo_mode_var, value="auto")
+        mode_auto.pack(side="left")
 
-        ttk.Label(frm, text="Algorytm:").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Combobox(frm, state="readonly", values=AVAILABLE_ALGOS, textvariable=self.single_algo_var).grid(row=3, column=1, sticky="ew", padx=6, pady=4)
+        algo_label = ttk.Label(frm, text="Algorytm:")
+        algo_label.grid(row=3, column=0, sticky="w", pady=4)
+        algo_combo = ttk.Combobox(frm, state="readonly", values=AVAILABLE_ALGOS, textvariable=self.single_algo_var)
+        algo_combo.grid(row=3, column=1, sticky="ew", padx=6, pady=4)
 
-        ttk.Label(frm, text="Poziom:").grid(row=3, column=2, sticky="e", pady=4)
-        ttk.Spinbox(frm, from_=0, to=9, textvariable=self.level_var, width=6).grid(row=3, column=2, sticky="w", padx=(54, 0), pady=4)
+        level_label = ttk.Label(frm, text="Poziom:")
+        level_label.grid(row=3, column=2, sticky="e", pady=4)
+        level_spin = ttk.Spinbox(frm, from_=0, to=9, textvariable=self.level_var, width=6)
+        level_spin.grid(row=3, column=2, sticky="w", padx=(54, 0), pady=4)
 
-        ttk.Label(frm, text="Auto-test algorytmów:").grid(row=4, column=0, sticky="nw", pady=4)
+        auto_label = ttk.Label(frm, text="Auto-test algorytmów:")
+        auto_label.grid(row=4, column=0, sticky="nw", pady=4)
         auto_box = ttk.Frame(frm)
         auto_box.grid(row=4, column=1, columnspan=2, sticky="w", pady=4)
-        ttk.Checkbutton(auto_box, text="zlib", variable=self.auto_zlib_var).pack(side="left", padx=(0, 8))
-        ttk.Checkbutton(auto_box, text="gzip", variable=self.auto_gzip_var).pack(side="left", padx=(0, 8))
-        ttk.Checkbutton(auto_box, text="bz2", variable=self.auto_bz2_var).pack(side="left", padx=(0, 8))
-        ttk.Checkbutton(auto_box, text="lzma", variable=self.auto_lzma_var).pack(side="left")
+        auto_zlib = ttk.Checkbutton(auto_box, text="zlib", variable=self.auto_zlib_var)
+        auto_zlib.pack(side="left", padx=(0, 8))
+        auto_gzip = ttk.Checkbutton(auto_box, text="gzip", variable=self.auto_gzip_var)
+        auto_gzip.pack(side="left", padx=(0, 8))
+        auto_bz2 = ttk.Checkbutton(auto_box, text="bz2", variable=self.auto_bz2_var)
+        auto_bz2.pack(side="left", padx=(0, 8))
+        auto_lzma = ttk.Checkbutton(auto_box, text="lzma", variable=self.auto_lzma_var)
+        auto_lzma.pack(side="left")
 
-        ttk.Label(frm, text="Rozmiar porcji:").grid(row=5, column=0, sticky="w", pady=4)
-        ttk.Combobox(frm, state="readonly", values=["256 KB", "512 KB", "1 MB", "4 MB"], textvariable=self.chunk_var, width=12).grid(row=5, column=1, sticky="w", padx=6, pady=4)
+        chunk_label = ttk.Label(frm, text="Rozmiar porcji:")
+        chunk_label.grid(row=5, column=0, sticky="w", pady=4)
+        chunk_combo = ttk.Combobox(frm, state="readonly", values=["256 KB", "512 KB", "1 MB", "4 MB"], textvariable=self.chunk_var, width=12)
+        chunk_combo.grid(row=5, column=1, sticky="w", padx=6, pady=4)
 
-        ttk.Checkbutton(frm, text="Nadpisuj istniejące pliki", variable=self.overwrite_var).grid(row=6, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Checkbutton(frm, text="Weryfikuj SHA-256 przy dekodowaniu", variable=self.verify_hash_var).grid(row=7, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Checkbutton(frm, text="Przywracaj znacznik czasu pliku po dekodowaniu", variable=self.restore_mtime_var).grid(row=8, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Checkbutton(frm, text="Przywracaj do oryginalnej lokalizacji, jeśli istnieje", variable=self.prefer_original_path_var).grid(row=9, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Checkbutton(frm, text="Jeśli źródłem był tekst, po dekodowaniu załaduj go też do pola", variable=self.load_text_on_decode_var).grid(row=10, column=0, columnspan=3, sticky="w", pady=2)
-        ttk.Checkbutton(frm, text="Otwórz folder po zakończeniu", variable=self.open_folder_var).grid(row=11, column=0, columnspan=3, sticky="w", pady=2)
+        overwrite_cb = ttk.Checkbutton(frm, text="Nadpisuj istniejące pliki", variable=self.overwrite_var)
+        overwrite_cb.grid(row=6, column=0, columnspan=3, sticky="w", pady=2)
+        verify_cb = ttk.Checkbutton(frm, text="Weryfikuj SHA-256 przy dekodowaniu", variable=self.verify_hash_var)
+        verify_cb.grid(row=7, column=0, columnspan=3, sticky="w", pady=2)
+        restore_cb = ttk.Checkbutton(frm, text="Przywracaj znacznik czasu pliku po dekodowaniu", variable=self.restore_mtime_var)
+        restore_cb.grid(row=8, column=0, columnspan=3, sticky="w", pady=2)
+        original_path_cb = ttk.Checkbutton(frm, text="Przywracaj do oryginalnej lokalizacji, jeśli istnieje", variable=self.prefer_original_path_var)
+        original_path_cb.grid(row=9, column=0, columnspan=3, sticky="w", pady=2)
+        load_text_cb = ttk.Checkbutton(frm, text="Jeśli źródłem był tekst, po dekodowaniu załaduj go też do pola", variable=self.load_text_on_decode_var)
+        load_text_cb.grid(row=10, column=0, columnspan=3, sticky="w", pady=2)
+        open_folder_cb = ttk.Checkbutton(frm, text="Otwórz folder po zakończeniu", variable=self.open_folder_var)
+        open_folder_cb.grid(row=11, column=0, columnspan=3, sticky="w", pady=2)
 
         btns = ttk.Frame(frm)
         btns.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(10, 0))
-        ttk.Button(btns, text="Anuluj", command=self.cancel_current_job).pack(side="left")
-        ttk.Button(btns, text="Otwórz ostatni folder", command=self.open_last_output_folder).pack(side="left", padx=(8, 0))
+        cancel_button = ttk.Button(btns, text="Anuluj", command=self.cancel_current_job)
+        cancel_button.pack(side="left")
+        open_last_button = ttk.Button(btns, text="Otwórz ostatni folder", command=self.open_last_output_folder)
+        open_last_button.pack(side="left", padx=(8, 0))
 
+        self._attach_tooltip(output_label, "Opcjonalny katalog, do którego program zapisze archiwa lub odzyskane pliki.")
+        self._attach_tooltip(output_entry, "Gdy pole jest puste, używany jest katalog domyślny albo lokalizacja źródła.")
+        self._attach_tooltip(output_button, "Wybierz folder wynikowy bez ręcznego wpisywania ścieżki.")
+        self._attach_tooltip(mode_label, "Wybierz sposób wybierania algorytmu kompresji.")
+        self._attach_tooltip(mode_single, "Użyj tylko jednego wskazanego algorytmu. Ten tryb jest szybszy i prostszy do porównania.")
+        self._attach_tooltip(mode_auto, "Przetestuj zaznaczone algorytmy i zachowaj najmniejszy wynik. Zwykle daje lepszą kompresję kosztem czasu.")
+        self._attach_tooltip(algo_label, "Algorytm używany w trybie 'Jeden algorytm'.")
+        self._attach_tooltip(algo_combo, "Wybierz konkretny algorytm kompresji używany bez auto-testu.")
+        self._attach_tooltip(level_label, "Poziom kompresji wpływa na szybkość i wielkość wyniku.")
+        self._attach_tooltip(level_spin, "Wyższy poziom zwykle kompresuje mocniej, ale może działać wolniej.")
+        self._attach_tooltip(auto_label, "Lista algorytmów sprawdzanych w trybie 'Minimum z wybranych'.")
+        self._attach_tooltip(auto_zlib, "Szybki i uniwersalny algorytm z małym narzutem.")
+        self._attach_tooltip(auto_gzip, "Format zgodny z GZIP, wygodny przy typowych danych tekstowych i plikowych.")
+        self._attach_tooltip(auto_bz2, "Silniejsza kompresja dla części danych, zwykle kosztem szybkości.")
+        self._attach_tooltip(auto_lzma, "Często daje najmniejsze pliki, ale bywa najwolniejszy i zużywa więcej pamięci.")
+        self._attach_tooltip(chunk_label, "Rozmiar porcji danych przetwarzanych jednorazowo.")
+        self._attach_tooltip(chunk_combo, "Większe porcje mogą przyspieszyć pracę, ale zwiększają użycie pamięci.")
+        self._attach_tooltip(overwrite_cb, "Jeśli plik wynikowy już istnieje, zostanie nadpisany zamiast tworzenia kolejnej wersji.")
+        self._attach_tooltip(verify_cb, "Po dekodowaniu porównaj sumę SHA-256 z wartością zapisaną w archiwum.")
+        self._attach_tooltip(restore_cb, "Po odzyskaniu pliku spróbuj przywrócić jego oryginalny czas modyfikacji.")
+        self._attach_tooltip(original_path_cb, "Jeśli archiwum zna oryginalny folder i ten folder nadal istnieje, program spróbuje go użyć.")
+        self._attach_tooltip(load_text_cb, "Gdy archiwum powstało z tekstu, odzyskany tekst zostanie także wpisany do pola edycji.")
+        self._attach_tooltip(open_folder_cb, "Po zakończeniu operacji automatycznie otwórz folder z wynikiem.")
+        self._attach_tooltip(cancel_button, "Poproś bieżące zadanie o bezpieczne anulowanie.")
+        self._attach_tooltip(open_last_button, "Otwórz folder zawierający ostatnio zapisany plik wynikowy.")
     def _build_status(self, parent):
         frm = ttk.LabelFrame(parent, text="Status i rozmiary", padding=10)
         frm.grid(row=1, column=0, sticky="ew", pady=(10, 0))
@@ -319,16 +420,16 @@ class App(tk.Tk):
             text, encoding = read_text_file(Path(path))
         except Exception as exc:
             log_path = write_error_report(
-                title="B??d wczytywania pliku tekstowego",
+                title="Błąd wczytywania pliku tekstowego",
                 message=str(exc),
                 traceback_text=traceback.format_exc(),
-                context=f"Nie uda?o si? wczyta? pliku tekstowego: {path}",
+                context=f"Nie udało się wczytać pliku tekstowego: {path}",
             )
-            self.log(f"Nie uda?o si? wczyta? tekstu z pliku: {path}")
-            self.log(f"Raport b??du zapisano do: {log_path}")
+            self.log(f"Nie udało się wczytać tekstu z pliku: {path}")
+            self.log(f"Raport błędu zapisano do: {log_path}")
             messagebox.showerror(
-                "B??d",
-                f"Nie uda?o si? wczyta? tekstu z pliku:\n{exc}\n\nRaport zapisano do:\n{log_path}",
+                "Błąd",
+                f"Nie udało się wczytać tekstu z pliku:\n{exc}\n\nRaport zapisano do:\n{log_path}",
             )
             return
 
@@ -363,8 +464,8 @@ class App(tk.Tk):
         text = self.text_box.get("1.0", "end-1c")
         char_count = len(text)
         byte_count = len(text.encode("utf-8"))
-        self.text_info_var.set(f"Tekst: {char_count} znak?w / {human_size(byte_count)}")
-        self.input_size_var.set(f"Wej?cie: {human_size(byte_count)}")
+        self.text_info_var.set(f"Tekst: {char_count} znaków / {human_size(byte_count)}")
+        self.input_size_var.set(f"Wejście: {human_size(byte_count)}")
 
     def load_archive_header(self):
         path_str = self.decode_path_var.get().strip()
@@ -670,19 +771,19 @@ class App(tk.Tk):
 
     def handle_error(self, item: dict):
         self.current_worker = None
-        self.status_var.set(f"B??d: {item['message']}")
+        self.status_var.set(f"Błąd: {item['message']}")
         if item.get("traceback"):
             self.log(item["traceback"])
         log_path = write_error_report(
-            title=f"B??d zadania: {item.get('task', 'nieznane')}",
+            title=f"Błąd zadania: {item.get('task', 'nieznane')}",
             message=item["message"],
             traceback_text=item.get("traceback", ""),
-            context="Wyj?tek przechwycony w w?tku roboczym i przekazany do GUI.",
+            context="Wyjątek przechwycony w wątku roboczym i przekazany do GUI.",
             extra_lines=[f"Czas zadania: {item.get('elapsed', 0.0):.3f} s"],
         )
-        self.log(f"Raport b??du zapisano do: {log_path}")
+        self.log(f"Raport błędu zapisano do: {log_path}")
         messagebox.showerror(
-            "B??d",
+            "Błąd",
             f"{item['message']}\n\nRaport zapisano do:\n{log_path}",
         )
 
@@ -727,13 +828,13 @@ class App(tk.Tk):
             self.auto_lzma_var.set(bool(data.get("auto_lzma", self.auto_lzma_var.get())))
         except Exception as exc:
             log_path = write_error_report(
-                title="B??d wczytywania ustawie?",
+                title="Błąd wczytywania ustawień",
                 message=str(exc),
                 traceback_text=traceback.format_exc(),
-                context="Wyj?tek podczas odczytu pliku ustawie? aplikacji.",
+                context="Wyjątek podczas odczytu pliku ustawień aplikacji.",
             )
-            self.log(f"Nie uda?o si? wczyta? ustawie?: {exc}")
-            self.log(f"Raport b??du zapisano do: {log_path}")
+            self.log(f"Nie udało się wczytać ustawień: {exc}")
+            self.log(f"Raport błędu zapisano do: {log_path}")
 
         self.update_file_info()
         self.on_text_modified()
@@ -761,14 +862,20 @@ class App(tk.Tk):
             SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         except Exception as exc:
             log_path = write_error_report(
-                title="B??d zapisu ustawie?",
+                title="Błąd zapisu ustawień",
                 message=str(exc),
                 traceback_text=traceback.format_exc(),
-                context="Wyj?tek podczas zapisu pliku ustawie? aplikacji.",
+                context="Wyjątek podczas zapisu pliku ustawień aplikacji.",
             )
-            self.log(f"Nie uda?o si? zapisa? ustawie?: {exc}")
-            self.log(f"Raport b??du zapisano do: {log_path}")
+            self.log(f"Nie udało się zapisać ustawień: {exc}")
+            self.log(f"Raport błędu zapisano do: {log_path}")
 
     def destroy(self):
-        self._save_settings()
-        super().destroy()
+        try:
+            if hasattr(self, "single_algo_var"):
+                self._save_settings()
+        finally:
+            try:
+                super().destroy()
+            except tk.TclError:
+                pass

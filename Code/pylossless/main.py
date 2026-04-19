@@ -8,6 +8,6 @@ from .gui import App
 def main():
     install_global_exception_handlers()
     if not AVAILABLE_ALGOS:
-        raise RuntimeError("Ten interpreter Pythona nie ma dost?pnego ?adnego modu?u kompresji z zestawu: zlib/gzip/bz2/lzma.")
+        raise RuntimeError("Ten interpreter Pythona nie ma dostępnego żadnego modułu kompresji z zestawu: zlib/gzip/bz2/lzma.")
     app = App()
     app.mainloop()

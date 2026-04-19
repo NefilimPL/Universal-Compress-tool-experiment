@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib
 import importlib.metadata as metadata
 import os
 import re
@@ -20,6 +21,27 @@ class RequirementSpec:
     distribution_name: str | None
     source: Path
     line_number: int
+
+
+def configure_console_encoding() -> None:
+    if os.name == "nt":
+        try:
+            import ctypes
+
+            kernel32 = ctypes.windll.kernel32
+            kernel32.SetConsoleOutputCP(65001)
+            kernel32.SetConsoleCP(65001)
+        except Exception:
+            pass
+
+    for stream_name in ("stdin", "stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
 
 
 def get_project_root() -> Path:
@@ -133,20 +155,20 @@ def console_print(message: str = "", *, stream=None) -> None:
 
 def ask_user_to_install(missing: list[RequirementSpec], requirements_path: Path) -> bool:
     if os.environ.get("PYLOSSLESS_AUTO_INSTALL") == "1":
-        console_print("Automatyczna instalacja zale?no?ci zosta?a wymuszona przez PYLOSSLESS_AUTO_INSTALL=1.")
+        console_print("Automatyczna instalacja zależności została wymuszona przez PYLOSSLESS_AUTO_INSTALL=1.")
         return True
 
     package_list = _format_requirement_list(missing)
-    console_print("Brakuje pakiet?w wymaganych do uruchomienia aplikacji:")
+    console_print("Brakuje pakietów wymaganych do uruchomienia aplikacji:")
     console_print(package_list)
-    console_print(f"Plik ?r?d?owy: {requirements_path}")
+    console_print(f"Plik źródłowy: {requirements_path}")
     console_print()
 
     if not has_interactive_console():
         return False
 
     while True:
-        reply = input("Czy chcesz zainstalowa? je teraz? [t/N]: ").strip().lower()
+        reply = input("Czy chcesz zainstalować je teraz? [t/N]: ").strip().lower()
         if reply in {"", "n", "nie", "no"}:
             return False
         if reply in {"t", "tak", "y", "yes"}:
@@ -169,13 +191,13 @@ def write_install_failure_log(requirements_path: Path, result: subprocess.Comple
     stamp = time.strftime("%Y%m%d_%H%M%S")
     path = log_dir / f"dependency_install_{stamp}_{time.time_ns() % 1_000_000_000:09d}.txt"
     report = [
-        "Nieudana instalacja zale?no?ci",
+        "Nieudana instalacja zależności",
         "============================",
         "",
         f"Data: {time.strftime('%Y-%m-%d %H:%M:%S')}",
         f"Plik requirements: {requirements_path}",
         f"Polecenie: {format_install_command(requirements_path)}",
-        f"Kod wyj?cia: {result.returncode}",
+        f"Kod wyjścia: {result.returncode}",
         "",
         "STDOUT:",
         result.stdout.rstrip(),
@@ -188,38 +210,60 @@ def write_install_failure_log(requirements_path: Path, result: subprocess.Comple
     return path
 
 
-def print_bootstrap_error(message: str, title: str = "B??d startu") -> None:
+def print_bootstrap_error(message: str, title: str = "Błąd startu") -> None:
     console_print(f"{title}: {message}", stream=sys.stderr)
+
+
+def _load_exception_report_writer():
+    for module_name in ("Code.pylossless.error_logging", "pylossless.error_logging"):
+        try:
+            module = importlib.import_module(module_name)
+        except Exception:
+            continue
+        writer = getattr(module, "write_exception_report", None)
+        if callable(writer):
+            return writer
+    return None
+
+
+def log_startup_exception(exc: BaseException, context: str) -> Path | None:
+    writer = _load_exception_report_writer()
+    if writer is None:
+        return None
+    try:
+        return writer(type(exc), exc, exc.__traceback__, context=context)
+    except Exception:
+        return None
 
 
 def ensure_runtime_dependencies(requirements_path: Path | None = None) -> None:
     if os.environ.get("PYLOSSLESS_SKIP_DEP_CHECK") == "1":
-        console_print("Pomijam sprawdzanie zale?no?ci, bo ustawiono PYLOSSLESS_SKIP_DEP_CHECK=1.")
+        console_print("Pomijam sprawdzanie zależności, bo ustawiono PYLOSSLESS_SKIP_DEP_CHECK=1.")
         return
 
     requirements_path = requirements_path or default_requirements_path()
     if not requirements_path.exists():
-        console_print(f"Nie znaleziono pliku zale?no?ci: {requirements_path}")
+        console_print(f"Nie znaleziono pliku zależności: {requirements_path}")
         return
 
     requirements = read_requirements_file(requirements_path)
     if not requirements:
-        console_print("Brak zewn?trznych pakiet?w w requirements.txt. Uruchamiam GUI.")
+        console_print("Brak zewnętrznych pakietów w requirements.txt. Uruchamiam GUI.")
         return
 
     missing = find_missing_requirements(requirements)
     if not missing:
-        console_print("Wszystkie pakiety z requirements.txt s? ju? dost?pne.")
+        console_print("Wszystkie pakiety z requirements.txt są już dostępne.")
         return
 
     if not ask_user_to_install(missing, requirements_path):
         raise RuntimeError(
-            "Instalacja brakuj?cych pakiet?w zosta?a anulowana.\n\n"
+            "Instalacja brakujących pakietów została anulowana.\n\n"
             f"Pakiety:\n{_format_requirement_list(missing)}\n\n"
-            f"Mo?esz zainstalowa? je r?cznie poleceniem:\n{format_install_command(requirements_path)}"
+            f"Możesz zainstalować je ręcznie poleceniem:\n{format_install_command(requirements_path)}"
         )
 
-    console_print("Rozpoczynam instalacj? brakuj?cych pakiet?w...")
+    console_print("Rozpoczynam instalację brakujących pakietów...")
     console_print(f"Polecenie: {format_install_command(requirements_path)}")
     result = install_requirements(requirements_path)
     if result.stdout.strip():
@@ -234,25 +278,27 @@ def ensure_runtime_dependencies(requirements_path: Path | None = None) -> None:
     if result.returncode != 0:
         log_path = write_install_failure_log(requirements_path, result)
         raise RuntimeError(
-            "Nie uda?o si? zainstalowa? wymaganych pakiet?w.\n\n"
-            f"Szczeg??y zapisano do:\n{log_path}\n\n"
-            f"Spr?buj ponownie poleceniem:\n{format_install_command(requirements_path)}"
+            "Nie udało się zainstalować wymaganych pakietów.\n\n"
+            f"Szczegóły zapisano do:\n{log_path}\n\n"
+            f"Spróbuj ponownie poleceniem:\n{format_install_command(requirements_path)}"
         )
 
     remaining = find_missing_requirements(requirements, assume_present_for_uncheckable=True)
     if remaining:
         raise RuntimeError(
-            "Instalacja zako?czy?a si? bez b??du, ale nadal brakuje cz??ci pakiet?w:\n\n"
+            "Instalacja zakończyła się bez błędu, ale nadal brakuje części pakietów:\n\n"
             f"{_format_requirement_list(remaining)}\n\n"
-            f"Spr?buj ponownie poleceniem:\n{format_install_command(requirements_path)}"
+            f"Spróbuj ponownie poleceniem:\n{format_install_command(requirements_path)}"
         )
 
-    console_print("Instalacja zako?czona powodzeniem. Uruchamiam GUI.")
+    console_print("Instalacja zakończona powodzeniem. Uruchamiam GUI.")
 
 
 def bootstrap_and_run(start_gui: Callable[[], None]) -> None:
+    configure_console_encoding()
     console_print(f"{APP_NAME} launcher")
-    console_print("Sprawdzanie zale?no?ci...")
+    console_print(f"Folder logów błędów: {get_bootstrap_log_dir()}")
+    console_print("Sprawdzanie zależności...")
     try:
         ensure_runtime_dependencies()
     except RuntimeError as exc:
@@ -260,4 +306,12 @@ def bootstrap_and_run(start_gui: Callable[[], None]) -> None:
         raise SystemExit(1) from exc
 
     console_print("Start interfejsu graficznego...")
-    start_gui()
+    try:
+        start_gui()
+    except Exception as exc:
+        log_path = log_startup_exception(exc, "Błąd uruchamiania GUI z launchera.")
+        if log_path is not None:
+            print_bootstrap_error(f"Nie udało się uruchomić GUI. Raport zapisano do: {log_path}")
+        else:
+            print_bootstrap_error(f"Nie udało się uruchomić GUI: {exc}")
+        raise SystemExit(1) from exc

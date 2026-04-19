@@ -48,7 +48,7 @@ class JobsTest(unittest.TestCase):
         )
 
     def test_text_roundtrip(self):
-        source = self.make_text_source("p?ki w twoim posiadaniu nie uronisz kropli krwi")
+        source = self.make_text_source("póki w twoim posiadaniu nie uronisz kropli krwi")
         result = compress_job(
             source=source,
             output_dir=str(self.temp_dir / "encoded"),
@@ -77,11 +77,11 @@ class JobsTest(unittest.TestCase):
             load_text_to_memory=True,
         )
 
-        self.assertEqual(decoded["text"], "p?ki w twoim posiadaniu nie uronisz kropli krwi")
+        self.assertEqual(decoded["text"], "póki w twoim posiadaniu nie uronisz kropli krwi")
         self.assertTrue(Path(decoded["dest"]).exists())
 
     def test_decode_keeps_file_when_text_encoding_is_invalid(self):
-        source = self.make_text_source("za???? g??l? ja??")
+        source = self.make_text_source("zażółć gęślą jaźń")
         result = compress_job(
             source=source,
             output_dir=str(self.temp_dir / "encoded"),
@@ -115,12 +115,12 @@ class JobsTest(unittest.TestCase):
 
         decoded_path = Path(decoded["dest"])
         self.assertTrue(decoded_path.exists())
-        self.assertEqual(decoded_path.read_text(encoding="utf-8"), "za???? g??l? ja??")
+        self.assertEqual(decoded_path.read_text(encoding="utf-8"), "zażółć gęślą jaźń")
         self.assertIsNone(decoded["text"])
-        self.assertTrue(any("Nie uda?o si? za?adowa? odzyskanego tekstu" in line for line in logs))
+        self.assertTrue(any("Nie udało się załadować odzyskanego tekstu" in line for line in logs))
 
     def test_verify_detects_size_mismatch(self):
-        source = self.make_text_source("kr?tka polska fraza")
+        source = self.make_text_source("krótka polska fraza")
         result = compress_job(
             source=source,
             output_dir=str(self.temp_dir / "encoded"),

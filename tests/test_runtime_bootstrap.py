@@ -6,7 +6,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +67,7 @@ class RuntimeBootstrapTest(unittest.TestCase):
 
     def test_ensure_runtime_dependencies_skips_empty_requirements_file(self):
         requirements = self.temp_dir / "requirements.txt"
-        requirements.write_text("# brak zewn?trznych pakiet?w\n", encoding="utf-8")
+        requirements.write_text("# brak zewnętrznych pakietów\n", encoding="utf-8")
 
         with patch.object(runtime_bootstrap, "ask_user_to_install") as ask_mock, patch.object(runtime_bootstrap, "install_requirements") as install_mock:
             runtime_bootstrap.ensure_runtime_dependencies(requirements)
@@ -87,3 +87,15 @@ class RuntimeBootstrapTest(unittest.TestCase):
         self.assertEqual(find_mock.call_count, 2)
         ask_mock.assert_called_once()
         install_mock.assert_called_once_with(requirements_path)
+
+    def test_bootstrap_and_run_logs_gui_startup_exception(self):
+        start_gui = Mock(side_effect=RuntimeError("boom"))
+        fake_log_path = self.temp_dir / "startup_error.txt"
+
+        with patch.object(runtime_bootstrap, "ensure_runtime_dependencies"), patch.object(runtime_bootstrap, "log_startup_exception", return_value=fake_log_path) as log_mock, patch.object(runtime_bootstrap, "print_bootstrap_error") as error_mock:
+            with self.assertRaises(SystemExit) as cm:
+                runtime_bootstrap.bootstrap_and_run(start_gui)
+
+        self.assertEqual(cm.exception.code, 1)
+        log_mock.assert_called_once()
+        error_mock.assert_called_once_with(f"Nie udało się uruchomić GUI. Raport zapisano do: {fake_log_path}")

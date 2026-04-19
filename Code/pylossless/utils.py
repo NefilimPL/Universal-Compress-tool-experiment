@@ -81,5 +81,5 @@ def read_text_file(path: Path) -> tuple[str, str]:
             last_error = exc
             break
     if last_error is None:
-        raise ValueError("Nie uda?o si? odczyta? pliku tekstowego.")
+        raise ValueError("Nie udało się odczytać pliku tekstowego.")
     raise last_error

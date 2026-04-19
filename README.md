@@ -1,222 +1,223 @@
 # Universal-Compress-tool-experiment
 
-Aplikacja desktopowa do bezstratnej kompresji i dekompresji plik?w oraz tekstu z w?asnym kontenerem `PYLC1` zapisanym jako plik `*.pylc`.
-Program ma interfejs Tkinter i pozwala zar?wno testowa? r??ne algorytmy, jak i wygodnie odzyskiwa? dane z archiw?w.
+Aplikacja desktopowa do bezstratnej kompresji i dekompresji plików oraz tekstu z własnym kontenerem `PYLC1` zapisanym jako plik `*.pylc`.
+Program ma interfejs Tkinter i pozwala zarówno testować różne algorytmy, jak i wygodnie odzyskiwać dane z archiwów.
 
 ## Co robi skrypt
 
-Program pozwala na trzy g??wne scenariusze:
+Program pozwala na trzy główne scenariusze:
 
 1. Kompresja pliku do archiwum `*.pylc`.
-2. Kompresja tekstu wpisanego r?cznie lub wczytanego z pliku `.txt`.
-3. Dekompresja i test integralno?ci wcze?niej utworzonego archiwum.
+2. Kompresja tekstu wpisanego ręcznie lub wczytanego z pliku `.txt`.
+3. Dekompresja i test integralności wcześniej utworzonego archiwum.
 
 Podczas kompresji program:
 
-- liczy sum? SHA-256 danych wej?ciowych,
-- zapisuje metadane w nag??wku kontenera `PYLC1`,
+- liczy sumę SHA-256 danych wejściowych,
+- zapisuje metadane w nagłówku kontenera `PYLC1`,
 - kompresuje dane jednym algorytmem albo testuje kilka i wybiera najmniejszy wynik,
 - zapisuje wynik do pliku `*.pylc`.
 
 Podczas dekompresji program:
 
-- odczytuje nag??wek archiwum,
+- odczytuje nagłówek archiwum,
 - odzyskuje oryginalny plik lub tekst,
 - opcjonalnie weryfikuje SHA-256,
 - opcjonalnie przywraca oryginalny znacznik czasu pliku,
-- mo?e za?adowa? odzyskany tekst z powrotem do pola tekstowego w GUI.
+- może załadować odzyskany tekst z powrotem do pola tekstowego w GUI.
 
-## Obs?ugiwane algorytmy
+## Obsługiwane algorytmy
 
-Program korzysta z modu??w dost?pnych w aktualnym interpreterze Pythona:
+Program korzysta z modułów dostępnych w aktualnym interpreterze Pythona:
 
 - `zlib`
 - `gzip`
 - `bz2`
 - `lzma`
 
-Je?eli wybierzesz tryb `Minimum z wybranych`, aplikacja uruchomi kompresj? dla zaznaczonych algorytm?w i zachowa najmniejszy wynik.
+Jeżeli wybierzesz tryb `Minimum z wybranych`, aplikacja uruchomi kompresję dla zaznaczonych algorytmów i zachowa najmniejszy wynik.
 
 ## Struktura projektu
 
-Najwa?niejsze pliki:
+Najważniejsze pliki:
 
-- `launcher.py` - g??wny plik launchera uruchamiany bezpo?rednio przez u?ytkownika.
-- `Code/__main__.py` - alternatywny start modu?owy, korzystaj?cy z tego samego bootstrapu.
-- `Code/runtime_bootstrap.py` - sprawdzanie `requirements.txt` i instalacja brakuj?cych pakiet?w po zgodzie u?ytkownika.
-- `Code/pylossless/main.py` - uruchomienie programu i instalacja globalnych hook?w wyj?tk?w.
-- `Code/pylossless/gui.py` - interfejs u?ytkownika Tkinter.
-- `Code/pylossless/jobs.py` - kompresja, dekompresja, estymacja rozmiaru i test integralno?ci.
-- `Code/pylossless/container.py` - zapis i odczyt nag??wka formatu `PYLC1`.
-- `Code/pylossless/error_logging.py` - globalny catcher wyj?tk?w i zapis raport?w b??d?w do `.txt`.
-- `requirements.txt` - lista zewn?trznych pakiet?w instalowanych przez `pip`.
+- `launcher.py` - główny plik launchera uruchamiany bezpośrednio przez użytkownika.
+- `Code/__main__.py` - alternatywny start modułowy, korzystający z tego samego bootstrapu.
+- `Code/runtime_bootstrap.py` - sprawdzanie `requirements.txt` i instalacja brakujących pakietów po zgodzie użytkownika.
+- `Code/pylossless/main.py` - uruchomienie programu i instalacja globalnych hooków wyjątków.
+- `Code/pylossless/gui.py` - interfejs użytkownika Tkinter.
+- `Code/pylossless/jobs.py` - kompresja, dekompresja, estymacja rozmiaru i test integralności.
+- `Code/pylossless/container.py` - zapis i odczyt nagłówka formatu `PYLC1`.
+- `Code/pylossless/error_logging.py` - globalny catcher wyjątków i zapis raportów błędów do `.txt`.
+- `requirements.txt` - lista zewnętrznych pakietów instalowanych przez `pip`.
 - `tests/` - testy jednostkowe logiki bez GUI.
 
-## Wymagania i zale?no?ci
+## Wymagania i zależności
 
-Aktualna wersja projektu dzia?a wy??cznie na bibliotece standardowej Pythona, wi?c `requirements.txt` jest obecnie pusty z premedytacj?.
-Plik zosta? jednak dodany ju? teraz, ?eby projekt by? przygotowany na przysz?e rozszerzenia wymagaj?ce pakiet?w zewn?trznych.
+Aktualna wersja projektu działa wyłącznie na bibliotece standardowej Pythona, więc `requirements.txt` jest obecnie pusty z premedytacją.
+Plik został jednak dodany już teraz, żeby projekt był przygotowany na przyszłe rozszerzenia wymagające pakietów zewnętrznych.
 
-Launcher przy starcie dzia?a bez GUI i przez konsol?:
+Launcher przy starcie działa bez GUI i przez konsolę:
 
-- sprawdza zawarto?? `requirements.txt`,
-- wykrywa brakuj?ce pakiety,
-- wypisuje ich list? w konsoli,
-- pyta u?ytkownika o zgod? na instalacj?,
+- sprawdza zawartość `requirements.txt`,
+- wykrywa brakujące pakiety,
+- wypisuje ich listę w konsoli,
+- pyta użytkownika o zgodę na instalację,
 - dopiero po potwierdzeniu uruchamia `pip install -r requirements.txt`,
-- po poprawnym sprawdzeniu lub instalacji uruchamia w?a?ciwe GUI aplikacji.
+- po poprawnym sprawdzeniu lub instalacji uruchamia właściwe GUI aplikacji.
 
-Je?li u?ytkownik odm?wi, launcher zatrzyma start i poka?e w konsoli polecenie do r?cznej instalacji.
-Je?eli instalacja przez `pip` si? nie powiedzie, szczeg??y trafiaj? do pliku `.txt` w katalogu log?w aplikacji.
+Jeśli użytkownik odmówi, launcher zatrzyma start i pokaże w konsoli polecenie do ręcznej instalacji.
+Jeżeli instalacja przez `pip` się nie powiedzie, szczegóły trafiają do pliku `.txt` w katalogu logów aplikacji.
 
-R?czna instalacja zale?no?ci:
+Ręczna instalacja zależności:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-## Jak uruchomi?
+## Jak uruchomić
 
 Uruchamiaj projekt przez plik `launcher.py`.
-To on najpierw sprawdza zale?no?ci w konsoli, a dopiero potem startuje GUI.
+To on najpierw sprawdza zależności w konsoli, a dopiero potem startuje GUI.
 
-Je?li chcesz uruchamia? go z terminala, mo?esz u?y?:
+Jeśli chcesz uruchamiać go z terminala, możesz użyć:
 
 ```bash
 python launcher.py
 ```
 
-Po starcie zobaczysz okno z trzema zak?adkami:
+Po starcie zobaczysz okno z trzema zakładkami:
 
 - `Kodowanie pliku`
 - `Kodowanie tekstu`
 - `Dekodowanie`
 
-## Jak u?ywa? programu
+## Jak używać programu
 
 ### 1. Kompresja pliku
 
-1. Wejd? w zak?adk? `Kodowanie pliku`.
-2. Wybierz plik wej?ciowy.
-3. Po prawej ustaw algorytm, poziom kompresji i pozosta?e opcje.
-4. Kliknij `Oszacuj rozmiar`, je?li chcesz najpierw zobaczy? przybli?ony wynik.
+1. Wejdź w zakładkę `Kodowanie pliku`.
+2. Wybierz plik wejściowy.
+3. Po prawej ustaw algorytm, poziom kompresji i pozostałe opcje.
+4. Kliknij `Oszacuj rozmiar`, jeśli chcesz najpierw zobaczyć przybliżony wynik.
 5. Kliknij `Koduj plik`.
 
 Efekt:
 
 - program utworzy archiwum `*.pylc`,
-- domy?lnie zapisze je obok pliku wej?ciowego, chyba ?e wska?esz katalog wyj?ciowy,
-- w dzienniku poka?e przebieg i wybrany algorytm.
+- domyślnie zapisze je obok pliku wejściowego, chyba że wskażesz katalog wyjściowy,
+- w dzienniku pokaże przebieg i wybrany algorytm.
 
 ### 2. Kompresja tekstu
 
-1. Wejd? w zak?adk? `Kodowanie tekstu`.
-2. Wpisz tekst r?cznie albo kliknij `Wczytaj TXT...`.
-3. Ustaw nazw? przysz?ego pliku tekstowego, pod jak? dane b?d? zapisane w metadanych.
-4. Opcjonalnie u?yj `Oszacuj rozmiar`.
+1. Wejdź w zakładkę `Kodowanie tekstu`.
+2. Wpisz tekst ręcznie albo kliknij `Wczytaj TXT...`.
+3. Ustaw nazwę przyszłego pliku tekstowego, pod jaką dane będą zapisane w metadanych.
+4. Opcjonalnie użyj `Oszacuj rozmiar`.
 5. Kliknij `Koduj tekst`.
 
 Efekt:
 
 - tekst zostanie zapisany do archiwum `*.pylc`,
-- przy dekompresji mo?e zosta? odzyskany jako plik i opcjonalnie zaczytany z powrotem do pola tekstowego.
+- przy dekompresji może został odzyskany jako plik i opcjonalnie zaczytany z powrotem do pola tekstowego.
 
 ### 3. Dekompresja archiwum
 
-1. Wejd? w zak?adk? `Dekodowanie`.
+1. Wejdź w zakładkę `Dekodowanie`.
 2. Wybierz plik `*.pylc`.
-3. Opcjonalnie kliknij `Czytaj nag??wek`, aby podejrze? metadane.
+3. Opcjonalnie kliknij `Czytaj nagłówek`, aby podejrzeć metadane.
 4. Kliknij `Dekoduj`.
 
 Efekt:
 
 - program odzyska dane do wskazanego katalogu,
-- je?li zaznaczona jest opcja przywracania oryginalnej lokalizacji i katalog istnieje, spr?buje zapisa? plik w?a?nie tam,
-- je?li archiwum pochodzi?o z tekstu, mo?e dodatkowo za?adowa? tekst do zak?adki tekstowej.
+- jeśli zaznaczona jest opcja przywracania oryginalnej lokalizacji i katalog istnieje, spróbuje zapisać plik właśnie tam,
+- jeśli archiwum pochodziło z tekstu, może dodatkowo załadować tekst do zakładki tekstowej.
 
-### 4. Test integralno?ci
+### 4. Test integralności
 
-1. W zak?adce `Dekodowanie` wybierz archiwum `*.pylc`.
-2. Kliknij `Test integralno?ci`.
+1. W zakładce `Dekodowanie` wybierz archiwum `*.pylc`.
+2. Kliknij `Test integralności`.
 
 Program sprawdzi, czy:
 
-- strumie? da si? poprawnie zdekodowa?,
-- liczba odzyskanych bajt?w zgadza si? z nag??wkiem,
-- suma SHA-256 zgadza si? z warto?ci? zapisan? w archiwum, je?li by?a wymagana.
+- strumień da się poprawnie zdekodować,
+- liczba odzyskanych bajtów zgadza się z nagłówkiem,
+- suma SHA-256 zgadza się z wartością zapisaną w archiwum, jeśli była wymagana.
 
-## Najwa?niejsze opcje w GUI
+## Najważniejsze opcje w GUI
 
-- `Jeden algorytm` - kompresja wy??cznie wybranym algorytmem.
-- `Minimum z wybranych` - test kilku algorytm?w i wyb?r najmniejszego wyniku.
-- `Nadpisuj istniej?ce pliki` - zapis bez tworzenia kolejnych wariant?w z sufiksem.
-- `Weryfikuj SHA-256 przy dekodowaniu` - kontrola integralno?ci odzyskiwanych danych.
-- `Przywracaj znacznik czasu pliku po dekodowaniu` - pr?ba odtworzenia `mtime` orygina?u.
-- `Przywracaj do oryginalnej lokalizacji, je?li istnieje` - u?ycie ?cie?ki zapisanej w nag??wku archiwum.
-- `Otw?rz folder po zako?czeniu` - szybkie przej?cie do katalogu wyniku po zako?czonej operacji.
+- `Jeden algorytm` - kompresja wyłącznie wybranym algorytmem.
+- `Minimum z wybranych` - test kilku algorytmów i wybór najmniejszego wyniku.
+- `Nadpisuj istniejące pliki` - zapis bez tworzenia kolejnych wariantów z sufiksem.
+- `Weryfikuj SHA-256 przy dekodowaniu` - kontrola integralności odzyskiwanych danych.
+- `Przywracaj znacznik czasu pliku po dekodowaniu` - próba odtworzenia `mtime` oryginału.
+- `Przywracaj do oryginalnej lokalizacji, jeśli istnieje` - użycie ścieżki zapisanej w nagłówku archiwum.
+- `Otwórz folder po zakończeniu` - szybkie przejście do katalogu wyniku po zakończonej operacji.
+- Podpowiedzi po najechaniu kursorem - dodatkowe objaśnienia pól, przycisków i opcji bezpośrednio w GUI.
 
 ## Gdzie program zapisuje pliki
 
 ### Ustawienia
 
-Plik ustawie? jest zapisywany w katalogu u?ytkownika:
+Plik ustawień jest zapisywany w katalogu użytkownika:
 
 - Windows: `%APPDATA%\PyLossless Studio\pylossless_settings.json`
 - Linux: `~/.config/PyLossless Studio/pylossless_settings.json`
 - macOS: `~/Library/Application Support/PyLossless Studio/pylossless_settings.json`
 
-### Domy?lne katalogi wynik?w
+### Domyślne katalogi wyników
 
-Je?li nie wska?esz w?asnej lokalizacji, program u?ywa katalog?w u?ytkownika aplikacji:
+Jeśli nie wskażesz własnej lokalizacji, program używa katalogów użytkownika aplikacji:
 
 - `wynik_zakodowany`
 - `wynik_odkodowany`
 
-### Logi b??d?w
+### Logi błędów
 
-W razie b??du program zapisuje raporty `.txt` w katalogu:
+W razie błędu program zapisuje raporty `.txt` w katalogu:
 
 - Windows: `%APPDATA%\PyLossless Studio\logs`
 - Linux: `~/.config/PyLossless Studio/logs`
 - macOS: `~/Library/Application Support/PyLossless Studio/logs`
 
-Raport b??du zawiera mi?dzy innymi:
+Raport błędu zawiera między innymi:
 
-- dat? i godzin?,
-- wersj? aplikacji,
-- komunikat b??du,
+- datę i godzinę,
+- wersję aplikacji,
+- komunikat błędu,
 - traceback,
 - kontekst operacji.
 
-## Obs?uga b??d?w
+## Obsługa błędów
 
-Program ma teraz trzy poziomy obs?ugi problem?w:
+Program ma teraz trzy poziomy obsługi problemów:
 
-- b??dy zada? roboczych podczas kompresji, dekompresji albo testu integralno?ci,
-- globalne, nieobs?u?one wyj?tki z g??wnego w?tku, w?tk?w Pythona i callback?w Tkinter,
-- b??dy bootstrapu zale?no?ci, czyli brak pakiet?w z `requirements.txt` albo nieudana instalacja przez `pip`.
+- błędy zadań roboczych podczas kompresji, dekompresji albo testu integralności,
+- globalne, nieobsłużone wyjątki z głównego wątku, wątków Pythona i callbacków Tkinter,
+- błędy bootstrapu zależności, czyli brak pakietów z `requirements.txt` albo nieudana instalacja przez `pip`.
 
-Je?li co? p?jdzie nie tak, u?ytkownik dostaje komunikat w GUI, a szczeg??owy raport trafia do pliku `.txt`.
+Jeśli coś pójdzie nie tak, użytkownik dostaje komunikat w GUI, a szczegółowy raport trafia do pliku `.txt`.
 
 ## Testy
 
-Uruchomienie test?w:
+Uruchomienie testów:
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-Aktualne testy sprawdzaj? mi?dzy innymi:
+Aktualne testy sprawdzają między innymi:
 
 - poprawny round-trip tekstu,
-- zachowanie dekompresji przy b??dnym kodowaniu tekstu w nag??wku,
-- wykrywanie niezgodno?ci rozmiaru w te?cie integralno?ci,
-- tworzenie raport?w b??d?w `.txt`,
-- odczyt `requirements.txt` i logik? bootstrapu zale?no?ci.
+- zachowanie dekompresji przy błędnym kodowaniu tekstu w nagłówku,
+- wykrywanie niezgodności rozmiaru w teście integralności,
+- tworzenie raportów błędów `.txt`,
+- odczyt `requirements.txt` i logikę bootstrapu zależności.
 
-## Porz?dki w plikach
+## Porządki w plikach
 
-W projekcie zosta?y usuni?te zb?dne pliki pomocnicze, kt?re dublowa?y aktualn? logik? lub nie by?y ju? u?ywane:
+W projekcie zostały usunięte zbędne pliki pomocnicze, które dublowały aktualną logikę lub nie były już używane:
 
-- `Code/code.py` - zast?piony przez jeden launcher `launcher.py`,
-- `Code/pylossless/settings.py` - nieu?ywany po przeniesieniu obs?ugi ustawie? do GUI.
+- `Code/code.py` - zastąpiony przez jeden launcher `launcher.py`,
+- `Code/pylossless/settings.py` - nieużywany po przeniesieniu obsługi ustawień do GUI.

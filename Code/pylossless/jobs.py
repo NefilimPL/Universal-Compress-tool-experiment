@@ -83,15 +83,15 @@ def compute_sha256(
     done = 0
     digest = hashlib.sha256()
     if total == 0:
-        progress_cb(0, 0, "Analiza wej?cia (SHA-256)")
+        progress_cb(0, 0, "Analiza wejścia (SHA-256)")
         return digest.hexdigest()
 
     for chunk in iter_source_chunks(source, chunk_size):
         if cancel_event.is_set():
-            raise CancelledError("Operacja zosta?a anulowana.")
+            raise CancelledError("Operacja została anulowana.")
         digest.update(chunk)
         done += len(chunk)
-        progress_cb(done, total, "Analiza wej?cia (SHA-256)")
+        progress_cb(done, total, "Analiza wejścia (SHA-256)")
     return digest.hexdigest()
 
 
@@ -113,7 +113,7 @@ def compress_to_container(
         try:
             for chunk in iter_source_chunks(source, chunk_size):
                 if cancel_event.is_set():
-                    raise CancelledError("Operacja zosta?a anulowana.")
+                    raise CancelledError("Operacja została anulowana.")
                 writer.write(chunk)
                 done += len(chunk)
                 progress_cb(done, total, f"Kompresja: {algo.upper()}")
@@ -172,7 +172,7 @@ def estimate_output(
 
     algos = [algo_single] if algo_mode == "single" else [algo for algo in auto_enabled if algo in AVAILABLE_ALGOS]
     if not algos:
-        raise ValueError("Brak aktywnych algorytm?w do oszacowania.")
+        raise ValueError("Brak aktywnych algorytmów do oszacowania.")
 
     result = {}
     exact = total <= exact_limit
@@ -210,7 +210,7 @@ def compress_job(
     log_cb: Callable[[str], None],
 ) -> dict:
     if source.mode == "file" and source.file_path is None:
-        raise ValueError("Nie wskazano pliku wej?ciowego.")
+        raise ValueError("Nie wskazano pliku wejściowego.")
     if source.mode == "text" and source.text_bytes is None:
         raise ValueError("Brak tekstu do zakodowania.")
 
@@ -220,7 +220,7 @@ def compress_job(
 
     candidate_algos = [algo_single] if algo_mode == "single" else [algo for algo in auto_enabled if algo in AVAILABLE_ALGOS]
     if not candidate_algos:
-        raise ValueError("Brak wybranych algorytm?w do kompresji.")
+        raise ValueError("Brak wybranych algorytmów do kompresji.")
 
     total_work = source.total_size * (1 + len(candidate_algos))
     progress_base = 0
@@ -239,7 +239,7 @@ def compress_job(
     try:
         for index, algo in enumerate(candidate_algos, start=1):
             if cancel_event.is_set():
-                raise CancelledError("Operacja zosta?a anulowana.")
+                raise CancelledError("Operacja została anulowana.")
 
             used_level = clamp_level(algo, level)
             header = build_header(source, algo, used_level, sha)
@@ -269,7 +269,7 @@ def compress_job(
                 temp_path.unlink(missing_ok=True)
 
         if best_temp is None or best_algo is None or best_size is None:
-            raise RuntimeError("Nie uda?o si? wygenerowa? pliku wynikowego.")
+            raise RuntimeError("Nie udało się wygenerować pliku wynikowego.")
 
         atomic_replace(best_temp, final_dest)
         ratio = 0.0 if source.total_size == 0 else (best_size / source.total_size) * 100.0
@@ -302,7 +302,7 @@ def _copy_decompressed_stream(
     done_out = 0
     while True:
         if cancel_event.is_set():
-            raise CancelledError("Operacja zosta?a anulowana.")
+            raise CancelledError("Operacja została anulowana.")
         chunk = stream.read(chunk_size)
         if not chunk:
             break
@@ -339,7 +339,7 @@ def _stream_decompress_zlib(
 
     while True:
         if cancel_event.is_set():
-            raise CancelledError("Operacja zosta?a anulowana.")
+            raise CancelledError("Operacja została anulowana.")
 
         comp_chunk = in_file.read(chunk_size)
         if not comp_chunk:
@@ -347,7 +347,7 @@ def _stream_decompress_zlib(
             if tail:
                 handle(tail)
             if not decomp.eof:
-                raise ValueError("Strumie? zlib jest niekompletny lub uszkodzony.")
+                raise ValueError("Strumień zlib jest niekompletny lub uszkodzony.")
             break
 
         data = decomp.decompress(comp_chunk)
@@ -448,15 +448,15 @@ def decompress_job(
 
         actual_size = temp_out.stat().st_size
         if actual_size != total_out:
-            raise ValueError(f"Rozmiar po dekodowaniu nie zgadza si? z nag??wkiem: {actual_size} != {total_out}.")
+            raise ValueError(f"Rozmiar po dekodowaniu nie zgadza się z nagłówkiem: {actual_size} != {total_out}.")
         if done_out != actual_size:
-            raise ValueError("Liczba zdekodowanych bajt?w nie zgadza si? z rozmiarem pliku tymczasowego.")
+            raise ValueError("Liczba zdekodowanych bajtów nie zgadza się z rozmiarem pliku tymczasowego.")
 
         if verify_hash:
             expected = header.get("original_sha256")
             actual_digest = digest.hexdigest() if digest is not None else None
             if expected and actual_digest != expected:
-                raise ValueError("Weryfikacja SHA-256 nie powiod?a si?. Plik lub archiwum mo?e by? uszkodzone.")
+                raise ValueError("Weryfikacja SHA-256 nie powiodła się. Plik lub archiwum może być uszkodzone.")
 
         if restore_mtime and header.get("mtime_ns") is not None:
             mtime_ns = int(header["mtime_ns"])
@@ -470,7 +470,7 @@ def decompress_job(
             try:
                 text_value = final_path.read_text(encoding=encoding)
             except Exception as exc:
-                log_cb(f"Nie uda?o si? za?adowa? odzyskanego tekstu do pola ({encoding}): {exc}")
+                log_cb(f"Nie udało się załadować odzyskanego tekstu do pola ({encoding}): {exc}")
 
         return {
             "dest": str(final_path),
@@ -501,7 +501,7 @@ def verify_archive_job(
     algo = header.get("algorithm")
     digest = hashlib.sha256() if expected_hash else None
 
-    log_cb(f"Test integralno?ci: {algo}")
+    log_cb(f"Test integralności: {algo}")
 
     with archive_path.open("rb") as raw_in:
         raw_in.seek(payload_offset)
@@ -511,7 +511,7 @@ def verify_archive_job(
             with gzip.GzipFile(fileobj=raw_in, mode="rb") as gz:
                 done_out = _copy_decompressed_stream(
                     gz,
-                    "Test integralno?ci: GZIP",
+                    "Test integralności: GZIP",
                     chunk_size,
                     cancel_event,
                     progress_cb,
@@ -524,7 +524,7 @@ def verify_archive_job(
             with bz2.BZ2File(raw_in, mode="rb") as bz:
                 done_out = _copy_decompressed_stream(
                     bz,
-                    "Test integralno?ci: BZ2",
+                    "Test integralności: BZ2",
                     chunk_size,
                     cancel_event,
                     progress_cb,
@@ -537,7 +537,7 @@ def verify_archive_job(
             with lzma.LZMAFile(raw_in, mode="rb") as xz:
                 done_out = _copy_decompressed_stream(
                     xz,
-                    "Test integralno?ci: LZMA",
+                    "Test integralności: LZMA",
                     chunk_size,
                     cancel_event,
                     progress_cb,
@@ -556,7 +556,7 @@ def verify_archive_job(
                 digest,
             )
         else:
-            raise ValueError(f"Nieobs?ugiwany algorytm: {algo}")
+            raise ValueError(f"Nieobsługiwany algorytm: {algo}")
 
     actual_hash = digest.hexdigest() if digest is not None else None
     size_ok = done_out == total_out

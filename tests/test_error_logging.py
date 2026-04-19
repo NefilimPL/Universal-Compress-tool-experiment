@@ -26,8 +26,8 @@ class ErrorLoggingTest(unittest.TestCase):
     def test_write_error_report_creates_txt_file(self):
         with patch.object(error_logging, "LOGS_DIR", self.temp_dir):
             path = error_logging.write_error_report(
-                title="Test b??du",
-                message="Co? posz?o nie tak",
+                title="Test błędu",
+                message="Coś poszło nie tak",
                 traceback_text="Traceback sample",
                 context="Test jednostkowy",
                 extra_lines=["linia 1", "linia 2"],
@@ -36,8 +36,8 @@ class ErrorLoggingTest(unittest.TestCase):
         self.assertEqual(path.suffix, ".txt")
         self.assertTrue(path.exists())
         content = path.read_text(encoding="utf-8")
-        self.assertIn("Test b??du", content)
-        self.assertIn("Co? posz?o nie tak", content)
+        self.assertIn("Test błędu", content)
+        self.assertIn("Coś poszło nie tak", content)
         self.assertIn("Traceback sample", content)
         self.assertIn("Test jednostkowy", content)
         self.assertIn("linia 1", content)

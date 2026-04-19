@@ -54,7 +54,7 @@ def build_error_report(
     if context:
         lines.extend(["", f"Kontekst: {context}"])
 
-    lines.extend(["", "Wiadomo??:", message])
+    lines.extend(["", "Wiadomość:", message])
 
     extra = _normalized_extra_lines(extra_lines)
     if extra:
@@ -93,7 +93,7 @@ def write_exception_report(
     exc_value,
     exc_traceback,
     *,
-    title: str = "Nieobs?u?ony wyj?tek",
+    title: str = "Nieobsłużony wyjątek",
     context: str | None = None,
     extra_lines: Iterable[str] | None = None,
 ) -> Path:
@@ -111,7 +111,7 @@ def _safe_write_exception_report(exc_type, exc_value, exc_traceback, *, context:
     try:
         return write_exception_report(exc_type, exc_value, exc_traceback, context=context)
     except Exception:
-        print(f"[{APP_NAME}] Nie uda?o si? zapisa? raportu b??du.", file=sys.stderr)
+        print(f"[{APP_NAME}] Nie udało się zapisać raportu błędu.", file=sys.stderr)
         traceback.print_exc()
         return None
 
@@ -130,10 +130,11 @@ def install_global_exception_handlers() -> None:
             exc_type,
             exc_value,
             exc_traceback,
-            context="Globalny wyj?tek w g??wnym w?tku aplikacji.",
+            context="Globalny wyjątek w głównym wątku aplikacji.",
         )
         if log_path is not None:
-            print(f"[{APP_NAME}] Raport b??du zapisano do: {log_path}", file=sys.stderr)
+            print(f"[{APP_NAME}] Raport błędu zapisano do: {log_path}", file=sys.stderr)
+            return
         _PREVIOUS_SYS_EXCEPHOOK(exc_type, exc_value, exc_traceback)
 
     sys.excepthook = handle_sys_exception
@@ -144,15 +145,16 @@ def install_global_exception_handlers() -> None:
             if issubclass(args.exc_type, KeyboardInterrupt):
                 return _PREVIOUS_THREADING_EXCEPHOOK(args)
 
-            thread_name = args.thread.name if args.thread is not None else "nieznany w?tek"
+            thread_name = args.thread.name if args.thread is not None else "nieznany wątek"
             log_path = _safe_write_exception_report(
                 args.exc_type,
                 args.exc_value,
                 args.exc_traceback,
-                context=f"Globalny wyj?tek w w?tku: {thread_name}.",
+                context=f"Globalny wyjątek w wątku: {thread_name}.",
             )
             if log_path is not None:
-                print(f"[{APP_NAME}] Raport b??du zapisano do: {log_path}", file=sys.stderr)
+                print(f"[{APP_NAME}] Raport błędu zapisano do: {log_path}", file=sys.stderr)
+                return
             _PREVIOUS_THREADING_EXCEPHOOK(args)
 
         threading.excepthook = handle_thread_exception

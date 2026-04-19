@@ -41,11 +41,11 @@ def read_container_header(path: Path) -> tuple[dict, int]:
             raise ValueError("To nie jest plik w formacie PYLC1.")
         length_raw = file_obj.read(struct.calcsize(HEADER_FMT))
         if len(length_raw) != struct.calcsize(HEADER_FMT):
-            raise ValueError("Uszkodzony nag??wek pliku.")
+            raise ValueError("Uszkodzony nagłówek pliku.")
         header_len = struct.unpack(HEADER_FMT, length_raw)[0]
         header_bytes = file_obj.read(header_len)
         if len(header_bytes) != header_len:
-            raise ValueError("Nag??wek pliku jest niekompletny.")
+            raise ValueError("Nagłówek pliku jest niekompletny.")
         header = json.loads(header_bytes.decode("utf-8"))
         payload_offset = len(MAGIC) + struct.calcsize(HEADER_FMT) + header_len
         return header, payload_offset
