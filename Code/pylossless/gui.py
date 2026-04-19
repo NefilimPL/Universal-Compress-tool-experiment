@@ -22,6 +22,7 @@ from .models import SourceSpec
 from .paths import LOGS_DIR, SETTINGS_FILE
 from .tooltip import ToolTip
 from .utils import ensure_dir, format_seconds, human_size, read_text_file
+from .video import VIDEO_PROFILES, is_video_file, transcode_video_job
 from .worker import Worker
 
 
@@ -73,6 +74,8 @@ class App(tk.Tk):
         self.single_algo_var = tk.StringVar(value=AVAILABLE_ALGOS[0] if AVAILABLE_ALGOS else "")
         self.level_var = tk.IntVar(value=6)
         self.chunk_var = tk.StringVar(value="1 MB")
+        self.file_mode_var = tk.StringVar(value="archive")
+        self.video_profile_var = tk.StringVar(value="strong")
 
         self.overwrite_var = tk.BooleanVar(value=False)
         self.verify_hash_var = tk.BooleanVar(value=True)
@@ -295,24 +298,46 @@ class App(tk.Tk):
         chunk_combo = ttk.Combobox(frm, state="readonly", values=["256 KB", "512 KB", "1 MB", "4 MB"], textvariable=self.chunk_var, width=12)
         chunk_combo.grid(row=5, column=1, sticky="w", padx=6, pady=4)
 
-        overwrite_cb = ttk.Checkbutton(frm, text="Nadpisuj istniejące pliki", variable=self.overwrite_var)
-        overwrite_cb.grid(row=6, column=0, columnspan=3, sticky="w", pady=2)
+        ttk.Separator(frm, orient="horizontal").grid(row=6, column=0, columnspan=3, sticky="ew", pady=8)
+
+        file_mode_label = ttk.Label(frm, text="Tryb pliku:")
+        file_mode_label.grid(row=7, column=0, sticky="w", pady=4)
+        file_mode_row = ttk.Frame(frm)
+        file_mode_row.grid(row=7, column=1, columnspan=2, sticky="w")
+        file_mode_archive = ttk.Radiobutton(file_mode_row, text="Archiwum .pylc", variable=self.file_mode_var, value="archive")
+        file_mode_archive.pack(side="left", padx=(0, 8))
+        file_mode_video = ttk.Radiobutton(file_mode_row, text="FFmpeg video", variable=self.file_mode_var, value="video")
+        file_mode_video.pack(side="left")
+
+        video_profile_label = ttk.Label(frm, text="Profil video:")
+        video_profile_label.grid(row=8, column=0, sticky="nw", pady=4)
+        video_profile_row = ttk.Frame(frm)
+        video_profile_row.grid(row=8, column=1, columnspan=2, sticky="w", pady=4)
+        video_profile_balanced = ttk.Radiobutton(video_profile_row, text="Balans", variable=self.video_profile_var, value="balanced")
+        video_profile_balanced.pack(side="left", padx=(0, 8))
+        video_profile_strong = ttk.Radiobutton(video_profile_row, text="Mocna", variable=self.video_profile_var, value="strong")
+        video_profile_strong.pack(side="left", padx=(0, 8))
+        video_profile_max = ttk.Radiobutton(video_profile_row, text="Max 720p", variable=self.video_profile_var, value="max")
+        video_profile_max.pack(side="left")
+
+        overwrite_cb = ttk.Checkbutton(frm, text="Nadpisuj istniejace pliki", variable=self.overwrite_var)
+        overwrite_cb.grid(row=9, column=0, columnspan=3, sticky="w", pady=2)
         verify_cb = ttk.Checkbutton(frm, text="Weryfikuj SHA-256 przy dekodowaniu", variable=self.verify_hash_var)
-        verify_cb.grid(row=7, column=0, columnspan=3, sticky="w", pady=2)
+        verify_cb.grid(row=10, column=0, columnspan=3, sticky="w", pady=2)
         restore_cb = ttk.Checkbutton(frm, text="Przywracaj znacznik czasu pliku po dekodowaniu", variable=self.restore_mtime_var)
-        restore_cb.grid(row=8, column=0, columnspan=3, sticky="w", pady=2)
-        original_path_cb = ttk.Checkbutton(frm, text="Przywracaj do oryginalnej lokalizacji, jeśli istnieje", variable=self.prefer_original_path_var)
-        original_path_cb.grid(row=9, column=0, columnspan=3, sticky="w", pady=2)
-        load_text_cb = ttk.Checkbutton(frm, text="Jeśli źródłem był tekst, po dekodowaniu załaduj go też do pola", variable=self.load_text_on_decode_var)
-        load_text_cb.grid(row=10, column=0, columnspan=3, sticky="w", pady=2)
-        open_folder_cb = ttk.Checkbutton(frm, text="Otwórz folder po zakończeniu", variable=self.open_folder_var)
-        open_folder_cb.grid(row=11, column=0, columnspan=3, sticky="w", pady=2)
+        restore_cb.grid(row=11, column=0, columnspan=3, sticky="w", pady=2)
+        original_path_cb = ttk.Checkbutton(frm, text="Przywracaj do oryginalnej lokalizacji, jesli istnieje", variable=self.prefer_original_path_var)
+        original_path_cb.grid(row=12, column=0, columnspan=3, sticky="w", pady=2)
+        load_text_cb = ttk.Checkbutton(frm, text="Jesli zrodlem byl tekst, po dekodowaniu zaladuj go tez do pola", variable=self.load_text_on_decode_var)
+        load_text_cb.grid(row=13, column=0, columnspan=3, sticky="w", pady=2)
+        open_folder_cb = ttk.Checkbutton(frm, text="Otworz folder po zakonczeniu", variable=self.open_folder_var)
+        open_folder_cb.grid(row=14, column=0, columnspan=3, sticky="w", pady=2)
 
         btns = ttk.Frame(frm)
-        btns.grid(row=12, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        btns.grid(row=15, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         cancel_button = ttk.Button(btns, text="Anuluj", command=self.cancel_current_job)
         cancel_button.pack(side="left")
-        open_last_button = ttk.Button(btns, text="Otwórz ostatni folder", command=self.open_last_output_folder)
+        open_last_button = ttk.Button(btns, text="Otworz ostatni folder", command=self.open_last_output_folder)
         open_last_button.pack(side="left", padx=(8, 0))
 
         self._attach_tooltip(output_label, "Opcjonalny katalog, do którego program zapisze archiwa lub odzyskane pliki.")
@@ -331,15 +356,22 @@ class App(tk.Tk):
         self._attach_tooltip(auto_bz2, "Silniejsza kompresja dla części danych, zwykle kosztem szybkości.")
         self._attach_tooltip(auto_lzma, "Często daje najmniejsze pliki, ale bywa najwolniejszy i zużywa więcej pamięci.")
         self._attach_tooltip(chunk_label, "Rozmiar porcji danych przetwarzanych jednorazowo.")
-        self._attach_tooltip(chunk_combo, "Większe porcje mogą przyspieszyć pracę, ale zwiększają użycie pamięci.")
-        self._attach_tooltip(overwrite_cb, "Jeśli plik wynikowy już istnieje, zostanie nadpisany zamiast tworzenia kolejnej wersji.")
-        self._attach_tooltip(verify_cb, "Po dekodowaniu porównaj sumę SHA-256 z wartością zapisaną w archiwum.")
-        self._attach_tooltip(restore_cb, "Po odzyskaniu pliku spróbuj przywrócić jego oryginalny czas modyfikacji.")
-        self._attach_tooltip(original_path_cb, "Jeśli archiwum zna oryginalny folder i ten folder nadal istnieje, program spróbuje go użyć.")
-        self._attach_tooltip(load_text_cb, "Gdy archiwum powstało z tekstu, odzyskany tekst zostanie także wpisany do pola edycji.")
-        self._attach_tooltip(open_folder_cb, "Po zakończeniu operacji automatycznie otwórz folder z wynikiem.")
-        self._attach_tooltip(cancel_button, "Poproś bieżące zadanie o bezpieczne anulowanie.")
-        self._attach_tooltip(open_last_button, "Otwórz folder zawierający ostatnio zapisany plik wynikowy.")
+        self._attach_tooltip(chunk_combo, "Wieksze porcje moga przyspieszyc prace, ale zwiekszaja uzycie pamieci.")
+        self._attach_tooltip(file_mode_label, "Dla zwyklych plikow zostaw archiwum .pylc. Dla .ts/.mp4 wybierz FFmpeg video, aby mocniej zmniejszyc rozmiar.")
+        self._attach_tooltip(file_mode_archive, "Zapisz plik bezstratnie do archiwum .pylc.")
+        self._attach_tooltip(file_mode_video, "Przekoduj plik video stratnie przez FFmpeg. To daje znacznie mniejsze pliki niz zwykle pakowanie danych.")
+        self._attach_tooltip(video_profile_label, "Profil ustala sile kompresji video.")
+        self._attach_tooltip(video_profile_balanced, "Lagodniejsza kompresja H.264 z lepsza zgodnoscia.")
+        self._attach_tooltip(video_profile_strong, "Mocniejsza kompresja H.265 bez zmiany rozdzielczosci.")
+        self._attach_tooltip(video_profile_max, "Najmniejszy plik: H.265, nizszy bitrate audio i ograniczenie do 720p.")
+        self._attach_tooltip(overwrite_cb, "Jesli plik wynikowy juz istnieje, zostanie nadpisany zamiast tworzenia kolejnej wersji.")
+        self._attach_tooltip(verify_cb, "Po dekodowaniu porownaj sume SHA-256 z wartoscia zapisana w archiwum.")
+        self._attach_tooltip(restore_cb, "Po odzyskaniu pliku sprobuj przywrocic jego oryginalny czas modyfikacji.")
+        self._attach_tooltip(original_path_cb, "Jesli archiwum zna oryginalny folder i ten folder nadal istnieje, program sprobuje go uzyc.")
+        self._attach_tooltip(load_text_cb, "Gdy archiwum powstalo z tekstu, odzyskany tekst zostanie takze wpisany do pola edycji.")
+        self._attach_tooltip(open_folder_cb, "Po zakonczeniu operacji automatycznie otworz folder z wynikiem.")
+        self._attach_tooltip(cancel_button, "Popros biezace zadanie o bezpieczne anulowanie.")
+        self._attach_tooltip(open_last_button, "Otworz folder zawierajacy ostatnio zapisany plik wynikowy.")
     def _build_status(self, parent):
         frm = ttk.LabelFrame(parent, text="Status i rozmiary", padding=10)
         frm.grid(row=1, column=0, sticky="ew", pady=(10, 0))
@@ -391,6 +423,9 @@ class App(tk.Tk):
         if self.auto_lzma_var.get() and "lzma" in AVAILABLE_ALGOS:
             algos.append("lzma")
         return algos
+
+    def is_video_mode(self) -> bool:
+        return self.file_mode_var.get() == "video"
 
     def choose_file(self):
         path = filedialog.askopenfilename(title="Wybierz plik do zakodowania")
@@ -531,7 +566,26 @@ class App(tk.Tk):
         try:
             source = self.get_file_source()
         except Exception as e:
-            messagebox.showerror("Błąd", str(e))
+            messagebox.showerror("Blad", str(e))
+            return
+
+        if self.is_video_mode():
+            assert source.file_path is not None
+            if not is_video_file(source.file_path):
+                messagebox.showerror("Blad", "Tryb FFmpeg video dziala tylko dla plikow .ts, .mp4 i innych formatow video.")
+                return
+
+            self.start_worker(
+                "transcode_video",
+                transcode_video_job,
+                source_path=source.file_path,
+                output_dir=self.output_dir_var.get().strip() or None,
+                overwrite=self.overwrite_var.get(),
+                profile=self.video_profile_var.get(),
+                cancel_event=self.cancel_event,
+                progress_cb=lambda done, total, phase: self.queue.put({"type": "progress", "done": done, "total": total, "phase": phase}),
+                log_cb=lambda msg: self.queue.put({"type": "log", "message": msg}),
+            )
             return
 
         self.start_worker(
@@ -625,7 +679,18 @@ class App(tk.Tk):
         try:
             source = self.get_file_source()
         except Exception as e:
-            messagebox.showerror("Błąd", str(e))
+            messagebox.showerror("Blad", str(e))
+            return
+
+        if self.is_video_mode():
+            assert source.file_path is not None
+            if not is_video_file(source.file_path):
+                messagebox.showerror("Blad", "Tryb FFmpeg video dziala tylko dla plikow .ts, .mp4 i innych formatow video.")
+                return
+            messagebox.showinfo(
+                "Informacja",
+                "Szacowanie rozmiaru nie jest jeszcze dostepne dla transkodowania video FFmpeg. Uzyj przycisku 'Koduj plik'.",
+            )
             return
 
         self.start_worker(
@@ -722,6 +787,22 @@ class App(tk.Tk):
             self.log(f"Oszacowanie ({kind}): {details}")
             return
 
+        if task == "transcode_video":
+            self.last_output_file = Path(result["dest"])
+            profile_meta = VIDEO_PROFILES.get(result.get("profile", ""), {})
+            profile_label = profile_meta.get("label", result.get("profile", "video"))
+            self.actual_size_var.set(
+                f"Ostatni wynik: {human_size(result['size'])} | kodek: {result['algorithm']} | wspolczynnik: {result['ratio']:.2f}%"
+            )
+            self.estimate_size_var.set("Szacowany wynik: -")
+            self.status_var.set(f"Transkodowanie video zakonczone w {elapsed:.1f}s")
+            self.log(
+                f"Zapisano video: {result['dest']} | wejscie {human_size(result['source_size'])} -> wyjscie {human_size(result['size'])} | profil {profile_label}"
+            )
+            if self.open_folder_var.get() and self.last_output_file:
+                self.open_folder(self.last_output_file.parent)
+            return
+
         if task in {"encode_file", "encode_text"}:
             self.last_output_file = Path(result["dest"])
             self.actual_size_var.set(
@@ -811,6 +892,9 @@ class App(tk.Tk):
         try:
             data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
             self.output_dir_var.set(data.get("output_dir", ""))
+            self.file_mode_var.set(data.get("file_mode", "archive") if data.get("file_mode", "archive") in {"archive", "video"} else "archive")
+            if data.get("video_profile") in VIDEO_PROFILES:
+                self.video_profile_var.set(data.get("video_profile"))
             self.algo_mode_var.set(data.get("algo_mode", "single"))
             if data.get("single_algo") in AVAILABLE_ALGOS:
                 self.single_algo_var.set(data.get("single_algo"))
@@ -842,6 +926,8 @@ class App(tk.Tk):
     def _save_settings(self):
         data = {
             "output_dir": self.output_dir_var.get(),
+            "file_mode": self.file_mode_var.get(),
+            "video_profile": self.video_profile_var.get(),
             "algo_mode": self.algo_mode_var.get(),
             "single_algo": self.single_algo_var.get(),
             "level": self.level_var.get(),
