@@ -1,10 +1,11 @@
 ﻿from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import threading
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable
 
 from .models import CancelledError
 from .utils import atomic_replace, choose_final_dest, create_temp_in_dir, ensure_dir, safe_stem
@@ -57,18 +58,98 @@ VIDEO_PROFILES = {
     },
 }
 VIDEO_PROFILE_ORDER = ['balanced', 'strong', 'max']
+FFMPEG_WINGET_ID = 'Gyan.FFmpeg'
+WINGET_ALREADY_INSTALLED_CODES = {2316632107}
 
 
 def is_video_file(path: Path) -> bool:
     return path.suffix.lower() in VIDEO_EXTENSIONS
 
 
+def _binary_name(stem: str) -> str:
+    return f'{stem}.exe' if os.name == 'nt' else stem
+
+
+def _safe_is_file(path: Path) -> bool:
+    try:
+        return path.is_file()
+    except OSError:
+        return False
+
+
+def _safe_iterdir(path: Path) -> list[Path]:
+    try:
+        return list(path.iterdir())
+    except OSError:
+        return []
+
+
+def _get_local_appdata() -> Path:
+    return Path(os.environ.get('LOCALAPPDATA') or (Path.home() / 'AppData' / 'Local'))
+
+
+def _iter_winget_package_candidates(binary_name: str) -> Iterable[Path]:
+    root = _get_local_appdata() / 'Microsoft' / 'WinGet' / 'Packages' / 'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe'
+    if not root.exists():
+        return
+
+    yield root / 'bin' / binary_name
+    for child in _safe_iterdir(root):
+        if child.is_dir():
+            yield child / 'bin' / binary_name
+            yield child / binary_name
+
+
+def _iter_common_binary_candidates(binary_name: str) -> Iterable[Path]:
+    local_appdata = _get_local_appdata()
+    program_files = Path(os.environ.get('ProgramFiles') or 'C:/Program Files')
+    program_files_x86 = Path(os.environ.get('ProgramFiles(x86)') or 'C:/Program Files (x86)')
+
+    roots = [
+        local_appdata / 'Microsoft' / 'WinGet' / 'Links',
+        Path('C:/Program Files/WinGet/Links'),
+        local_appdata / 'Programs' / 'FFmpeg',
+        program_files / 'FFmpeg',
+        program_files / 'ffmpeg',
+        program_files_x86 / 'FFmpeg',
+        Path('C:/ffmpeg'),
+        Path.home() / 'ffmpeg',
+    ]
+    for root in roots:
+        yield root / binary_name
+        yield root / 'bin' / binary_name
+
+    yield from _iter_winget_package_candidates(binary_name)
+
+
+def _find_binary(stem: str) -> str | None:
+    binary_name = _binary_name(stem)
+
+    direct = shutil.which(binary_name) or shutil.which(stem)
+    if direct:
+        return direct
+
+    seen: set[str] = set()
+    for candidate in _iter_common_binary_candidates(binary_name):
+        key = str(candidate).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        if _safe_is_file(candidate):
+            return str(candidate)
+    return None
+
+
 def find_ffmpeg() -> str | None:
-    return shutil.which('ffmpeg')
+    return _find_binary('ffmpeg')
 
 
 def find_ffprobe() -> str | None:
-    return shutil.which('ffprobe')
+    return _find_binary('ffprobe')
+
+
+def find_winget() -> str | None:
+    return shutil.which('winget')
 
 
 def resolve_video_output_dir(source_path: Path, chosen_dir: str | None) -> Path:
@@ -200,6 +281,100 @@ def _report_video_progress(
     progress_cb(done_ms, total_ms, phase)
 
 
+def _format_winget_error(return_code: int) -> str:
+    if return_code in WINGET_ALREADY_INSTALLED_CODES:
+        return (
+            f'Instalacja FFmpeg przez winget zwrocila kod {return_code}. '
+            'Winget zwykle zwraca ten kod, gdy pakiet jest juz zainstalowany albo nie chce go instalowac ponownie.'
+        )
+    return f'Instalacja FFmpeg przez winget zakonczyl sie kodem {return_code}. Sprawdz dziennik, aby zobaczyc szczegoly.'
+
+
+def install_ffmpeg_job(
+    cancel_event: threading.Event,
+    progress_cb: Callable[[int, int, str], None],
+    log_cb: Callable[[str], None],
+) -> dict:
+    existing = find_ffmpeg()
+    if existing:
+        progress_cb(1, 1, 'Instalacja FFmpeg')
+        log_cb(f'FFmpeg jest juz dostepny: {existing}')
+        return {'installed': True, 'package_id': FFMPEG_WINGET_ID, 'path': existing, 'already_present': True}
+
+    winget = find_winget()
+    if not winget:
+        raise RuntimeError('Nie znaleziono programu winget. Zainstaluj FFmpeg recznie i dodaj go do PATH.')
+
+    phase = 'Instalacja FFmpeg'
+    progress_cb(0, 1, phase)
+    command = [
+        winget,
+        'install',
+        '--id',
+        FFMPEG_WINGET_ID,
+        '-e',
+        '--silent',
+        '--accept-package-agreements',
+        '--accept-source-agreements',
+    ]
+    log_cb('Uruchamiam instalacje FFmpeg przez winget...')
+
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
+
+    try:
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            if cancel_event.is_set():
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+                raise CancelledError('Instalacja FFmpeg zostala anulowana.')
+
+            line = raw_line.strip()
+            if line:
+                log_cb(line)
+
+        return_code = process.wait()
+        installed_path = find_ffmpeg()
+        if installed_path:
+            progress_cb(1, 1, phase)
+            if return_code != 0:
+                log_cb(f'Winget zwrocil kod {return_code}, ale FFmpeg jest juz dostepny: {installed_path}')
+            return {
+                'installed': True,
+                'package_id': FFMPEG_WINGET_ID,
+                'path': installed_path,
+                'already_present': return_code != 0,
+            }
+
+        if return_code != 0:
+            raise RuntimeError(_format_winget_error(return_code))
+
+        installed_path = find_ffmpeg()
+        if not installed_path:
+            raise RuntimeError(
+                'Instalacja FFmpeg zakonczyla sie bez bledu, ale nie udalo sie odnalezc ffmpeg.exe. '
+                'Sprawdz, czy pakiet zostal zainstalowany i czy ffmpeg.exe jest dostepny w PATH lub katalogu WinGet.'
+            )
+
+        progress_cb(1, 1, phase)
+        return {'installed': True, 'package_id': FFMPEG_WINGET_ID, 'path': installed_path, 'already_present': False}
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=5)
+
+
 def transcode_video_job(
     source_path: Path,
     output_dir: str | None,
@@ -221,7 +396,7 @@ def transcode_video_job(
     ffmpeg_path = find_ffmpeg()
     if not ffmpeg_path:
         raise RuntimeError(
-            'Nie znaleziono programu ffmpeg w PATH. Zainstaluj FFmpeg i dodaj go do PATH, aby uzyc mocniejszej kompresji video.'
+            'Nie znaleziono programu ffmpeg. Sprobuj instalacji z poziomu aplikacji albo dodaj ffmpeg.exe do PATH.'
         )
 
     temp_dest, final_dest = resolve_video_output_path(source_path, output_dir, overwrite)

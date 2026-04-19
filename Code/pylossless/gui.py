@@ -22,7 +22,7 @@ from .models import SourceSpec
 from .paths import LOGS_DIR, SETTINGS_FILE
 from .tooltip import ToolTip
 from .utils import ensure_dir, format_seconds, human_size, read_text_file
-from .video import VIDEO_PROFILES, is_video_file, transcode_video_job
+from .video import VIDEO_PROFILES, find_ffmpeg, install_ffmpeg_job, is_video_file, transcode_video_job
 from .worker import Worker
 
 
@@ -31,7 +31,7 @@ class App(tk.Tk):
         super().__init__()
         self.title(f"{APP_NAME} {APP_VERSION}")
         self.geometry("1180x860")
-        self.minsize(1080, 760)
+        self.minsize(900, 620)
 
         self.queue: "queue.Queue[dict]" = queue.Queue()
         self.cancel_event = threading.Event()
@@ -44,6 +44,7 @@ class App(tk.Tk):
         ensure_dir(LOGS_DIR)
         self._build_ui()
         self._load_settings()
+        self.apply_theme()
         self.log(f"Folder logów błędów: {LOGS_DIR}")
         self.after(QUEUE_POLL_MS, self._poll_queue)
 
@@ -76,6 +77,7 @@ class App(tk.Tk):
         self.chunk_var = tk.StringVar(value="1 MB")
         self.file_mode_var = tk.StringVar(value="archive")
         self.video_profile_var = tk.StringVar(value="strong")
+        self.dark_theme_var = tk.BooleanVar(value=False)
 
         self.overwrite_var = tk.BooleanVar(value=False)
         self.verify_hash_var = tk.BooleanVar(value=True)
@@ -114,7 +116,7 @@ class App(tk.Tk):
         main.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 12))
 
         left = ttk.Frame(main, padding=8)
-        right = ttk.Frame(main, padding=8)
+        right = ttk.Frame(main, padding=0)
         main.add(left, weight=3)
         main.add(right, weight=2)
 
@@ -129,9 +131,42 @@ class App(tk.Tk):
         self._build_tab_decode()
 
         right.columnconfigure(0, weight=1)
-        self._build_settings(right)
-        self._build_status(right)
-        self._build_log(right)
+        right.rowconfigure(0, weight=1)
+        self.right_canvas = tk.Canvas(right, highlightthickness=0, borderwidth=0)
+        self.right_scrollbar = ttk.Scrollbar(right, orient="vertical", command=self.right_canvas.yview)
+        self.right_canvas.configure(yscrollcommand=self.right_scrollbar.set)
+        self.right_canvas.grid(row=0, column=0, sticky="nsew")
+        self.right_scrollbar.grid(row=0, column=1, sticky="ns")
+
+        self.right_inner = ttk.Frame(self.right_canvas, padding=8)
+        self.right_window = self.right_canvas.create_window((0, 0), window=self.right_inner, anchor="nw")
+        self.right_inner.columnconfigure(0, weight=1)
+        self.right_inner.bind("<Configure>", self._on_right_panel_configure)
+        self.right_canvas.bind("<Configure>", self._on_right_canvas_configure)
+        self.right_canvas.bind("<Enter>", self._bind_right_panel_mousewheel)
+        self.right_canvas.bind("<Leave>", self._unbind_right_panel_mousewheel)
+
+        self._build_settings(self.right_inner)
+        self._build_status(self.right_inner)
+        self._build_log(self.right_inner)
+
+    def _on_right_panel_configure(self, _event=None):
+        if hasattr(self, "right_canvas"):
+            self.right_canvas.configure(scrollregion=self.right_canvas.bbox("all"))
+
+    def _on_right_canvas_configure(self, event):
+        if hasattr(self, "right_window"):
+            self.right_canvas.itemconfigure(self.right_window, width=event.width)
+
+    def _bind_right_panel_mousewheel(self, _event=None):
+        self.bind_all("<MouseWheel>", self._on_right_mousewheel)
+
+    def _unbind_right_panel_mousewheel(self, _event=None):
+        self.unbind_all("<MouseWheel>")
+
+    def _on_right_mousewheel(self, event):
+        if hasattr(self, "right_canvas") and event.delta:
+            self.right_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _build_tab_file(self):
         tab = ttk.Frame(self.notebook, padding=10)
@@ -187,8 +222,16 @@ class App(tk.Tk):
         info_label = ttk.Label(tab, textvariable=self.text_info_var)
         info_label.grid(row=1, column=0, sticky="w", pady=(4, 4))
 
-        self.text_box = tk.Text(tab, wrap="word", undo=True, font=("Consolas", 11))
-        self.text_box.grid(row=2, column=0, sticky="nsew", pady=6)
+        text_frame = ttk.Frame(tab)
+        text_frame.grid(row=2, column=0, sticky="nsew", pady=6)
+        text_frame.columnconfigure(0, weight=1)
+        text_frame.rowconfigure(0, weight=1)
+
+        self.text_box = tk.Text(text_frame, wrap="word", undo=True, font=("Consolas", 11))
+        text_scroll = ttk.Scrollbar(text_frame, orient="vertical", command=self.text_box.yview)
+        self.text_box.configure(yscrollcommand=text_scroll.set)
+        self.text_box.grid(row=0, column=0, sticky="nsew")
+        text_scroll.grid(row=0, column=1, sticky="ns")
         self.text_box.bind("<<Modified>>", self.on_text_modified)
 
         buttons = ttk.Frame(tab)
@@ -332,9 +375,11 @@ class App(tk.Tk):
         load_text_cb.grid(row=13, column=0, columnspan=3, sticky="w", pady=2)
         open_folder_cb = ttk.Checkbutton(frm, text="Otworz folder po zakonczeniu", variable=self.open_folder_var)
         open_folder_cb.grid(row=14, column=0, columnspan=3, sticky="w", pady=2)
+        theme_cb = ttk.Checkbutton(frm, text="Ciemny motyw", variable=self.dark_theme_var, command=self.apply_theme)
+        theme_cb.grid(row=15, column=0, columnspan=3, sticky="w", pady=(2, 4))
 
         btns = ttk.Frame(frm)
-        btns.grid(row=15, column=0, columnspan=3, sticky="ew", pady=(10, 0))
+        btns.grid(row=16, column=0, columnspan=3, sticky="ew", pady=(10, 0))
         cancel_button = ttk.Button(btns, text="Anuluj", command=self.cancel_current_job)
         cancel_button.pack(side="left")
         open_last_button = ttk.Button(btns, text="Otworz ostatni folder", command=self.open_last_output_folder)
@@ -370,6 +415,7 @@ class App(tk.Tk):
         self._attach_tooltip(original_path_cb, "Jesli archiwum zna oryginalny folder i ten folder nadal istnieje, program sprobuje go uzyc.")
         self._attach_tooltip(load_text_cb, "Gdy archiwum powstalo z tekstu, odzyskany tekst zostanie takze wpisany do pola edycji.")
         self._attach_tooltip(open_folder_cb, "Po zakonczeniu operacji automatycznie otworz folder z wynikiem.")
+        self._attach_tooltip(theme_cb, "Przelacz jasny i ciemny motyw aplikacji.")
         self._attach_tooltip(cancel_button, "Popros biezace zadanie o bezpieczne anulowanie.")
         self._attach_tooltip(open_last_button, "Otworz folder zawierajacy ostatnio zapisany plik wynikowy.")
     def _build_status(self, parent):
@@ -393,8 +439,16 @@ class App(tk.Tk):
         frm.columnconfigure(0, weight=1)
         frm.rowconfigure(0, weight=1)
 
-        self.log_box = tk.Text(frm, height=16, wrap="word", state="disabled", font=("Consolas", 10))
+        log_frame = ttk.Frame(frm)
+        log_frame.grid(row=0, column=0, sticky="nsew")
+        log_frame.columnconfigure(0, weight=1)
+        log_frame.rowconfigure(0, weight=1)
+
+        self.log_box = tk.Text(log_frame, height=16, wrap="word", state="disabled", font=("Consolas", 10))
+        log_scroll = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_box.yview)
+        self.log_box.configure(yscrollcommand=log_scroll.set)
         self.log_box.grid(row=0, column=0, sticky="nsew")
+        log_scroll.grid(row=0, column=1, sticky="ns")
 
     def log(self, msg: str):
         timestamp = time.strftime("%H:%M:%S")
@@ -426,6 +480,98 @@ class App(tk.Tk):
 
     def is_video_mode(self) -> bool:
         return self.file_mode_var.get() == "video"
+
+    def ensure_ffmpeg_ready(self) -> bool:
+        ffmpeg_path = find_ffmpeg()
+        if ffmpeg_path:
+            self.log(f"Wykryto FFmpeg: {ffmpeg_path}")
+            return True
+
+        should_install = messagebox.askyesno(
+            "FFmpeg",
+            "Nie znaleziono FFmpeg w PATH.\n\nCzy chcesz sprobowac zainstalowac go teraz przez winget?",
+        )
+        if not should_install:
+            self.log("FFmpeg nie jest dostepny. Uzytkownik pominol instalacje.")
+            return False
+
+        self.start_worker(
+            "install_ffmpeg",
+            install_ffmpeg_job,
+            cancel_event=self.cancel_event,
+            progress_cb=lambda done, total, phase: self.queue.put({"type": "progress", "done": done, "total": total, "phase": phase}),
+            log_cb=lambda msg: self.queue.put({"type": "log", "message": msg}),
+        )
+        return False
+
+    def apply_theme(self):
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        if self.dark_theme_var.get():
+            bg = "#11161c"
+            panel = "#1b2430"
+            field = "#0d1117"
+            fg = "#e6edf3"
+            accent = "#3b82f6"
+            border = "#2f3945"
+            select_bg = "#1d4ed8"
+        else:
+            bg = "#f3f5f7"
+            panel = "#ffffff"
+            field = "#ffffff"
+            fg = "#111827"
+            accent = "#2563eb"
+            border = "#cbd5e1"
+            select_bg = "#93c5fd"
+
+        self.configure(bg=bg)
+        if hasattr(self, "right_canvas"):
+            self.right_canvas.configure(bg=bg, highlightbackground=border, highlightcolor=accent)
+        style.configure(".", background=bg, foreground=fg)
+        style.configure("TFrame", background=bg)
+        style.configure("TLabelframe", background=bg, foreground=fg, bordercolor=border)
+        style.configure("TLabelframe.Label", background=bg, foreground=fg)
+        style.configure("TLabel", background=bg, foreground=fg)
+        style.configure("TButton", background=panel, foreground=fg, bordercolor=border, focusthickness=1, focuscolor=accent)
+        style.map("TButton", background=[("active", accent)], foreground=[("active", "#ffffff")])
+        style.configure("TCheckbutton", background=bg, foreground=fg)
+        style.configure("TRadiobutton", background=bg, foreground=fg)
+        style.configure("TEntry", fieldbackground=field, foreground=fg, bordercolor=border)
+        style.configure("TCombobox", fieldbackground=field, foreground=fg, background=panel, bordercolor=border, arrowcolor=fg)
+        style.map("TCombobox", fieldbackground=[("readonly", field)], foreground=[("readonly", fg)], selectbackground=[("readonly", field)], selectforeground=[("readonly", fg)])
+        style.configure("TNotebook", background=bg, borderwidth=0)
+        style.configure("TNotebook.Tab", background=panel, foreground=fg, padding=(12, 6))
+        style.map("TNotebook.Tab", background=[("selected", accent)], foreground=[("selected", "#ffffff")])
+        style.configure("TPanedwindow", background=bg)
+        style.configure("TSeparator", background=border)
+        style.configure("Horizontal.TProgressbar", troughcolor=field, background=accent, bordercolor=border)
+
+        self.option_add("*TCombobox*Listbox*Background", field)
+        self.option_add("*TCombobox*Listbox*Foreground", fg)
+        self.option_add("*TCombobox*Listbox*selectBackground", accent)
+        self.option_add("*TCombobox*Listbox*selectForeground", "#ffffff")
+
+        if hasattr(self, "text_box"):
+            self.text_box.configure(
+                bg=field,
+                fg=fg,
+                insertbackground=fg,
+                selectbackground=select_bg,
+                selectforeground="#ffffff" if self.dark_theme_var.get() else fg,
+                highlightbackground=border,
+                highlightcolor=accent,
+            )
+        if hasattr(self, "log_box"):
+            self.log_box.configure(
+                bg=field,
+                fg=fg,
+                insertbackground=fg,
+                selectbackground=select_bg,
+                selectforeground="#ffffff" if self.dark_theme_var.get() else fg,
+                highlightbackground=border,
+                highlightcolor=accent,
+            )
 
     def choose_file(self):
         path = filedialog.askopenfilename(title="Wybierz plik do zakodowania")
@@ -573,6 +719,8 @@ class App(tk.Tk):
             assert source.file_path is not None
             if not is_video_file(source.file_path):
                 messagebox.showerror("Blad", "Tryb FFmpeg video dziala tylko dla plikow .ts, .mp4 i innych formatow video.")
+                return
+            if not self.ensure_ffmpeg_ready():
                 return
 
             self.start_worker(
@@ -787,6 +935,20 @@ class App(tk.Tk):
             self.log(f"Oszacowanie ({kind}): {details}")
             return
 
+        if task == "install_ffmpeg":
+            ffmpeg_path = result.get("path") or "ffmpeg.exe"
+            info_text = "FFmpeg jest gotowy do uzycia."
+            if result.get("already_present"):
+                info_text = "FFmpeg byl juz zainstalowany i zostal poprawnie wykryty."
+            self.estimate_size_var.set("Szacowany wynik: -")
+            self.status_var.set(f"FFmpeg gotowy w {elapsed:.1f}s")
+            self.log(f"{info_text} Lokalizacja: {ffmpeg_path}")
+            messagebox.showinfo(
+                "FFmpeg",
+                f"{info_text}\n\nWykryta lokalizacja:\n{ffmpeg_path}",
+            )
+            return
+
         if task == "transcode_video":
             self.last_output_file = Path(result["dest"])
             profile_meta = VIDEO_PROFILES.get(result.get("profile", ""), {})
@@ -895,6 +1057,7 @@ class App(tk.Tk):
             self.file_mode_var.set(data.get("file_mode", "archive") if data.get("file_mode", "archive") in {"archive", "video"} else "archive")
             if data.get("video_profile") in VIDEO_PROFILES:
                 self.video_profile_var.set(data.get("video_profile"))
+            self.dark_theme_var.set(bool(data.get("dark_theme", False)))
             self.algo_mode_var.set(data.get("algo_mode", "single"))
             if data.get("single_algo") in AVAILABLE_ALGOS:
                 self.single_algo_var.set(data.get("single_algo"))
@@ -928,6 +1091,7 @@ class App(tk.Tk):
             "output_dir": self.output_dir_var.get(),
             "file_mode": self.file_mode_var.get(),
             "video_profile": self.video_profile_var.get(),
+            "dark_theme": self.dark_theme_var.get(),
             "algo_mode": self.algo_mode_var.get(),
             "single_algo": self.single_algo_var.get(),
             "level": self.level_var.get(),

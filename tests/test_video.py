@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import os
 import shutil
 import sys
 import threading
@@ -11,7 +12,14 @@ from uuid import uuid4
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Code'))
 
-from pylossless.video import build_ffmpeg_command, build_scale_filter, is_video_file, resolve_video_output_path, transcode_video_job
+from pylossless.video import (
+    build_ffmpeg_command,
+    build_scale_filter,
+    find_ffmpeg,
+    is_video_file,
+    resolve_video_output_path,
+    transcode_video_job,
+)
 
 
 class VideoToolsTest(unittest.TestCase):
@@ -53,6 +61,17 @@ class VideoToolsTest(unittest.TestCase):
         self.assertEqual(final_dest.parent, source.parent)
         self.assertEqual(temp_dest.suffix, '.mp4')
         temp_dest.unlink(missing_ok=True)
+
+    def test_find_ffmpeg_detects_winget_package_layout(self):
+        package_dir = self.temp_dir / 'Microsoft' / 'WinGet' / 'Packages' / 'Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe' / 'ffmpeg-8.1-full_build' / 'bin'
+        package_dir.mkdir(parents=True)
+        ffmpeg_path = package_dir / 'ffmpeg.exe'
+        ffmpeg_path.write_bytes(b'')
+
+        with patch('pylossless.video.shutil.which', return_value=None), patch.dict(os.environ, {'LOCALAPPDATA': str(self.temp_dir)}, clear=False):
+            found = find_ffmpeg()
+
+        self.assertEqual(Path(found), ffmpeg_path)
 
     def test_transcode_video_job_requires_ffmpeg(self):
         source = self.temp_dir / 'movie.ts'
