@@ -1,7 +1,6 @@
-# Runtime dependencies for PyLossless Studio.
-#
-# The current version of the project uses only Python standard library modules,
-# so this file intentionally has no external packages yet.
-#
-# Add future pip packages here, one per line, for example:
-# requests>=2.32
+-r requirements-runtime.txt
+PySide6>=6.9,<7
+cryptography>=45,<46
+zstandard>=0.23,<0.24
+pytest>=8.4,<9
+pytest-qt>=4.4,<5

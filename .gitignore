@@ -1,5 +1,10 @@
 __pycache__/
 *.pyc
+.pytest_cache/
+.scratch_pytest/
+.tmp/
+.tmp_test_models/
 .tmp_test_runs/
+pytest-cache-files-*/
 .venv/
 .worktrees/

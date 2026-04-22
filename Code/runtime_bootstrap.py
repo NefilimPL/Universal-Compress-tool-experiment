@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-APP_NAME = "PyLossless Studio"
+APP_NAME = "Universal Compress V2"
 _REQUIREMENT_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+")
 
 
@@ -52,6 +52,18 @@ def default_requirements_path() -> Path:
     return get_project_root() / "requirements.txt"
 
 
+def default_runtime_requirements_path() -> Path:
+    return get_project_root() / "requirements-runtime.txt"
+
+
+def get_env_var(*names: str) -> str | None:
+    for name in names:
+        value = os.environ.get(name)
+        if value is not None:
+            return value
+    return None
+
+
 def get_user_data_dir() -> Path:
     if os.name == "nt":
         base = Path(os.environ.get("APPDATA") or (Path.home() / "AppData" / "Roaming"))
@@ -68,6 +80,13 @@ def get_bootstrap_log_dir() -> Path:
 
 def format_install_command(requirements_path: Path) -> str:
     return f'"{sys.executable}" -m pip install -r "{requirements_path}"'
+
+
+def build_install_command(requirements_path: Path, *, user_install: bool = False) -> list[str]:
+    command = [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)]
+    if user_install:
+        command.append("--user")
+    return command
 
 
 def extract_distribution_name(spec: str) -> str | None:
@@ -134,8 +153,25 @@ def find_missing_requirements(
                 missing.append(requirement)
             continue
         try:
-            metadata.version(requirement.distribution_name)
+            installed_version = metadata.version(requirement.distribution_name)
         except metadata.PackageNotFoundError:
+            missing.append(requirement)
+            continue
+        try:
+            from packaging.requirements import InvalidRequirement, Requirement
+            from packaging.version import InvalidVersion, Version
+        except Exception:
+            if not assume_present_for_uncheckable:
+                missing.append(requirement)
+            continue
+        try:
+            parsed_requirement = Requirement(requirement.spec)
+            parsed_version = Version(installed_version)
+        except (InvalidRequirement, InvalidVersion):
+            if not assume_present_for_uncheckable:
+                missing.append(requirement)
+            continue
+        if parsed_requirement.specifier and parsed_version not in parsed_requirement.specifier:
             missing.append(requirement)
     return missing
 
@@ -154,8 +190,11 @@ def console_print(message: str = "", *, stream=None) -> None:
 
 
 def ask_user_to_install(missing: list[RequirementSpec], requirements_path: Path) -> bool:
-    if os.environ.get("PYLOSSLESS_AUTO_INSTALL") == "1":
-        console_print("Automatyczna instalacja zależności została wymuszona przez PYLOSSLESS_AUTO_INSTALL=1.")
+    if get_env_var("UNIVERSAL_COMPRESS_AUTO_INSTALL", "PYLOSSLESS_AUTO_INSTALL") == "1":
+        console_print(
+            "Automatyczna instalacja zależności została wymuszona przez "
+            "UNIVERSAL_COMPRESS_AUTO_INSTALL=1 lub PYLOSSLESS_AUTO_INSTALL=1."
+        )
         return True
 
     package_list = _format_requirement_list(missing)
@@ -177,11 +216,35 @@ def ask_user_to_install(missing: list[RequirementSpec], requirements_path: Path)
 
 
 def install_requirements(requirements_path: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", str(requirements_path)],
+    primary_result = subprocess.run(
+        build_install_command(requirements_path),
         capture_output=True,
         text=True,
         check=False,
+    )
+    if primary_result.returncode == 0:
+        return primary_result
+    if not should_retry_user_install(primary_result):
+        return primary_result
+    return subprocess.run(
+        build_install_command(requirements_path, user_install=True),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def should_retry_user_install(result: subprocess.CompletedProcess[str]) -> bool:
+    error_text = "\n".join(filter(None, [result.stdout, result.stderr])).lower()
+    return any(
+        needle in error_text
+        for needle in (
+            "access is denied",
+            "permission denied",
+            "errno 13",
+            "winerror 5",
+            "operation not permitted",
+        )
     )
 
 
@@ -215,7 +278,12 @@ def print_bootstrap_error(message: str, title: str = "Błąd startu") -> None:
 
 
 def _load_exception_report_writer():
-    for module_name in ("Code.pylossless.error_logging", "pylossless.error_logging"):
+    for module_name in (
+        "Code.universal_compress.error_logging",
+        "universal_compress.error_logging",
+        "Code.pylossless.error_logging",
+        "pylossless.error_logging",
+    ):
         try:
             module = importlib.import_module(module_name)
         except Exception:
@@ -237,23 +305,26 @@ def log_startup_exception(exc: BaseException, context: str) -> Path | None:
 
 
 def ensure_runtime_dependencies(requirements_path: Path | None = None) -> None:
-    if os.environ.get("PYLOSSLESS_SKIP_DEP_CHECK") == "1":
-        console_print("Pomijam sprawdzanie zależności, bo ustawiono PYLOSSLESS_SKIP_DEP_CHECK=1.")
+    if get_env_var("UNIVERSAL_COMPRESS_SKIP_DEP_CHECK", "PYLOSSLESS_SKIP_DEP_CHECK") == "1":
+        console_print(
+            "Pomijam sprawdzanie zależności, bo ustawiono "
+            "UNIVERSAL_COMPRESS_SKIP_DEP_CHECK=1 lub PYLOSSLESS_SKIP_DEP_CHECK=1."
+        )
         return
 
-    requirements_path = requirements_path or default_requirements_path()
+    requirements_path = requirements_path or default_runtime_requirements_path()
     if not requirements_path.exists():
         console_print(f"Nie znaleziono pliku zależności: {requirements_path}")
         return
 
     requirements = read_requirements_file(requirements_path)
     if not requirements:
-        console_print("Brak zewnętrznych pakietów w requirements.txt. Uruchamiam GUI.")
+        console_print(f"Brak zewnętrznych pakietów w {requirements_path.name}. Uruchamiam GUI.")
         return
 
     missing = find_missing_requirements(requirements)
     if not missing:
-        console_print("Wszystkie pakiety z requirements.txt są już dostępne.")
+        console_print(f"Wszystkie pakiety z {requirements_path.name} są już dostępne.")
         return
 
     if not ask_user_to_install(missing, requirements_path):
@@ -294,13 +365,13 @@ def ensure_runtime_dependencies(requirements_path: Path | None = None) -> None:
     console_print("Instalacja zakończona powodzeniem. Uruchamiam GUI.")
 
 
-def bootstrap_and_run(start_gui: Callable[[], None]) -> None:
+def bootstrap_and_run(start_gui: Callable[[], None], requirements_path: Path | None = None) -> None:
     configure_console_encoding()
     console_print(f"{APP_NAME} launcher")
     console_print(f"Folder logów błędów: {get_bootstrap_log_dir()}")
     console_print("Sprawdzanie zależności...")
     try:
-        ensure_runtime_dependencies()
+        ensure_runtime_dependencies(requirements_path or default_runtime_requirements_path())
     except RuntimeError as exc:
         print_bootstrap_error(str(exc))
         raise SystemExit(1) from exc

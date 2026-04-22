@@ -7,7 +7,6 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'Code'))
@@ -20,14 +19,12 @@ from pylossless.video import (
     resolve_video_output_path,
     transcode_video_job,
 )
+from tests._paths import make_temp_dir
 
 
 class VideoToolsTest(unittest.TestCase):
     def setUp(self):
-        test_root = ROOT / '.tmp_test_runs'
-        test_root.mkdir(exist_ok=True)
-        self.temp_dir = test_root / f'video_tests_{uuid4().hex}'
-        self.temp_dir.mkdir()
+        self.temp_dir = make_temp_dir("video_tests")
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)

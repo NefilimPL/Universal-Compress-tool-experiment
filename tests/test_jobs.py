@@ -4,7 +4,6 @@ import json
 import shutil
 import struct
 import sys
-from uuid import uuid4
 import threading
 import unittest
 from pathlib import Path
@@ -17,6 +16,7 @@ from pylossless.constants import HEADER_FMT, MAGIC
 from pylossless.container import read_container_header
 from pylossless.jobs import compress_job, decompress_job, verify_archive_job
 from pylossless.models import SourceSpec
+from tests._paths import make_temp_dir
 
 
 def rewrite_header(archive_path: Path, transform):
@@ -29,10 +29,7 @@ def rewrite_header(archive_path: Path, transform):
 
 class JobsTest(unittest.TestCase):
     def setUp(self):
-        test_root = ROOT / '.tmp_test_runs'
-        test_root.mkdir(exist_ok=True)
-        self.temp_dir = test_root / f"pylossless_tests_{uuid4().hex}"
-        self.temp_dir.mkdir()
+        self.temp_dir = make_temp_dir("pylossless_tests")
         self.algo = "zlib" if "zlib" in AVAILABLE_ALGOS else AVAILABLE_ALGOS[0]
 
     def tearDown(self):

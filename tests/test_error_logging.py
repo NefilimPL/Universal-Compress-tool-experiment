@@ -5,20 +5,17 @@ import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "Code"))
 
 from pylossless import error_logging
+from tests._paths import make_temp_dir
 
 
 class ErrorLoggingTest(unittest.TestCase):
     def setUp(self):
-        test_root = ROOT / ".tmp_test_runs"
-        test_root.mkdir(exist_ok=True)
-        self.temp_dir = test_root / f"pylossless_logs_{uuid4().hex}"
-        self.temp_dir.mkdir()
+        self.temp_dir = make_temp_dir("pylossless_logs")
 
     def tearDown(self):
         shutil.rmtree(self.temp_dir, ignore_errors=True)
